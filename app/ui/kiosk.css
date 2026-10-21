@@ -1,0 +1,171 @@
+:root {
+  --bg: #0f1b2d;
+  --panel: #ffffff;
+  --ink: #12202f;
+  --muted: #4a5a6c;
+  --accent: #0b5cad;
+  --accent-ink: #ffffff;
+  --alert: #a4262c;
+  --focus: #ffb900;
+}
+
+* { box-sizing: border-box; }
+
+body {
+  margin: 0;
+  min-height: 100vh;
+  background: var(--bg);
+  color: #f3f6fa;
+  font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+  font-size: 1.25rem;
+  line-height: 1.5;
+}
+
+.kiosk { max-width: 80rem; margin: 0 auto; padding: 1.5rem 1rem 3rem; }
+h1 { margin: 0; font-size: 2rem; }
+.subtitle { margin: 0.25rem 0 1rem; color: #c9d4e2; }
+
+.status { min-height: 1.75rem; margin: 0 0 0.75rem; font-weight: 600; color: #ffe08a; }
+.status.error { color: #ffb4b8; }
+
+.panel {
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 0.75rem;
+  padding: 1.25rem;
+  margin-bottom: 1rem;
+}
+
+label { display: block; font-weight: 700; margin-bottom: 0.5rem; }
+
+textarea {
+  width: 100%;
+  font: inherit;
+  color: var(--ink);
+  padding: 0.75rem;
+  border: 2px solid #5b6b7e;
+  border-radius: 0.5rem;
+  resize: vertical;
+}
+
+.hint { margin: 0.5rem 0 0; color: var(--muted); font-size: 1rem; }
+
+.actions { display: flex; flex-wrap: wrap; gap: 0.75rem; margin-top: 1rem; }
+
+button {
+  min-height: 3.5rem;
+  min-width: 7rem;
+  padding: 0.5rem 1.5rem;
+  font: inherit;
+  font-weight: 700;
+  color: var(--ink);
+  background: #e6edf5;
+  border: 2px solid #5b6b7e;
+  border-radius: 0.5rem;
+  cursor: pointer;
+}
+button.primary { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+button.quiet { background: transparent; }
+button[disabled] { opacity: 0.55; cursor: not-allowed; }
+button[aria-pressed="true"] { background: var(--alert); color: #fff; border-color: var(--alert); }
+
+:focus-visible { outline: 4px solid var(--focus); outline-offset: 2px; }
+
+.mic-dot {
+  display: inline-block;
+  width: 0.8rem;
+  height: 0.8rem;
+  margin-right: 0.5rem;
+  border-radius: 50%;
+  background: var(--alert);
+}
+button[aria-pressed="true"] .mic-dot { background: #fff; animation: pulse 1s infinite; }
+
+@keyframes pulse { 50% { opacity: 0.25; } }
+@media (prefers-reduced-motion: reduce) {
+  button[aria-pressed="true"] .mic-dot { animation: none; }
+}
+
+.answer h2 { margin: 0 0 0.5rem; font-size: 1.1rem; color: var(--muted); }
+.answer-text { margin: 0; font-size: 1.6rem; line-height: 1.4; }
+.answer.refused .answer-text, .answer.fallback .answer-text { color: #3d2c00; }
+.answer.error .answer-text { color: var(--alert); }
+.citation { margin: 0.75rem 0 0; color: var(--muted); font-size: 1rem; }
+#replay-btn { margin-top: 1rem; }
+
+[hidden] { display: none !important; }
+
+/* ---------------------------------------------------- two-column layout */
+/* Left: question + own face. Right: avatar with the answer directly below it.
+   minmax(0, 1fr) lets columns shrink so nothing forces horizontal scrolling. */
+.layout {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+  gap: 1.5rem;
+  align-items: start;
+}
+.col { min-width: 0; }
+.col > :last-child { margin-bottom: 0; }
+
+@media (max-width: 900px) {
+  .layout { grid-template-columns: minmax(0, 1fr); gap: 0; }
+  .col > :last-child { margin-bottom: 1rem; }
+}
+
+
+/* ---------------------------------------------------------- avatar face */
+.face { display: flex; flex-direction: column; align-items: center; margin: 0 0 1rem; }
+.face-stage {
+  position: relative;
+  width: min(100%, 22rem);
+  aspect-ratio: 1 / 1;
+  border-radius: 50%;
+  overflow: hidden;
+  background: #1c2c44;
+  border: 6px solid #5b6b7e;
+  transition: border-color 0.2s;
+}
+.face-stage img,
+.face-stage video { position: absolute; inset: 0; width: 100%; height: 100%; object-fit: cover; }
+.face-note { color: #c9d4e2; text-align: center; margin-top: 0.5rem; }
+
+/* One state machine drives the look: data-state on <main> is idle | listening | thinking | speaking | error. */
+.kiosk[data-state="listening"] .face-stage { border-color: var(--alert); animation: ring 1s infinite; }
+.kiosk[data-state="thinking"] .face-stage { border-color: #ffe08a; animation: ring 1.4s infinite; }
+.kiosk[data-state="speaking"] .face-stage { border-color: #7bd88f; }
+.kiosk[data-state="error"] .face-stage { border-color: #ffb4b8; }
+.kiosk[data-state="thinking"] .face-stage img { filter: saturate(0.7) brightness(0.9); }
+
+@keyframes ring { 50% { border-color: transparent; } }
+@media (prefers-reduced-motion: reduce) {
+  .kiosk .face-stage { animation: none !important; }
+}
+
+/* ------------------------------------------------------ own face + prompt */
+.face-panel h2 { margin: 0 0 0.5rem; font-size: 1.1rem; color: var(--muted); }
+label.check { display: flex; align-items: center; gap: 0.75rem; font-weight: 600; margin: 0.75rem 0 0; }
+label.check input { width: 1.5rem; height: 1.5rem; }
+.hint.error, #face-status.error { color: var(--alert); font-weight: 600; }
+.camera { margin-top: 1rem; }
+.camera video { width: 100%; max-height: 20rem; border-radius: 0.5rem; background: #000; transform: scaleX(-1); }
+
+.dialog {
+  position: fixed;
+  inset: 0;
+  z-index: 10;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  padding: 1rem;
+  background: rgba(8, 14, 24, 0.82);
+}
+.dialog-box {
+  max-width: 30rem;
+  padding: 1.5rem;
+  background: var(--panel);
+  color: var(--ink);
+  border-radius: 0.75rem;
+  text-align: center;
+}
+.dialog-box h2 { margin: 0 0 0.5rem; font-size: 1.75rem; }
+.dialog-text { margin: 0 0 1.25rem; font-size: 1.25rem; }

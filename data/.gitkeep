@@ -1,0 +1,3 @@
+# Drop Dam International Airport source documents here (e.g. terminals.md,
+# gates.md, security.md, transport.md, amenities.md, hours.md, faq.md).
+# The offline ingestion job (Task 3) indexes every text document in this folder.

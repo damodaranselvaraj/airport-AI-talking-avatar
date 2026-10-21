@@ -1,0 +1,55 @@
+# Dam AI Talking Avatar Kiosk — pinned dependencies.
+# Python 3.12+ required.
+#
+# NOTE on GPU: install PyTorch separately with the CUDA build that matches
+# your driver (see Ditto's instructions), then the Ditto checkpoints. Torch is
+# intentionally not pinned here because the correct wheel is CUDA-specific.
+# Ditto owns the GPU; Whisper and Kokoro run on CPU on the RTX 4050 (6 GB).
+
+# --- Web / server ---
+fastapi==0.115.6
+uvicorn[standard]==0.34.0
+pydantic==2.10.4
+pydantic-settings==2.7.1
+websockets==14.1
+python-multipart==0.0.20
+
+# --- Orchestration + LLM ---
+langgraph==0.2.60
+langchain==0.3.14
+langchain-openai==0.3.1
+openai==1.59.6
+langchain-text-splitters==0.3.4
+# Observability: langsmith is already a transitive dep of langchain; pinned explicitly so the
+# version is reproducible and the tracing helpers can rely on its API surface.
+langsmith==0.2.11
+# Jev decision model (answer validation). Early-access package — uncomment and
+# verify the exact name/version against official TypeSafe docs at Task 7.
+# langchain-typesafe==<verify>
+
+# --- Retrieval ---
+chromadb==1.5.9
+numpy==1.26.4
+python-frontmatter==1.1.0
+rank-bm25==0.2.2
+cohere==5.13.12
+
+# --- Speech (CPU) ---
+faster-whisper==1.1.0
+# faster-whisper 1.1.0 declares av>=11 but calls av.open(metadata_errors=...),
+# which PyAV 19 removed. Without this pin every upload fails to decode.
+av==12.3.0
+# kokoro 0.3.4 is incompatible with misaki >= 0.7 (misaki.en.MutableToken was
+# renamed MToken); 0.9.4 matches misaki 0.9.4 and takes device="cpu".
+kokoro==0.9.4
+misaki[en]==0.9.4
+# misaki's English G2P needs this spaCy model; it auto-downloads on first use,
+# pinning it here makes installs repeatable and offline-friendly.
+en-core-web-sm @ https://github.com/explosion/spacy-models/releases/download/en_core_web_sm-3.8.0/en_core_web_sm-3.8.0-py3-none-any.whl
+soundfile==0.12.1
+# --- Traveler photos: decode, auto-rotate, strip metadata, re-encode to PNG ---
+Pillow==11.1.0
+
+# --- Testing ---
+pytest==8.3.4
+httpx==0.28.1

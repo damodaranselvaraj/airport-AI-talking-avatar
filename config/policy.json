@@ -1,0 +1,108 @@
+{
+  "version": 1,
+  "notes": "Deterministic routing rules. Matched against lower-cased text with punctuation stripped. 'greeting' rules must match the WHOLE utterance. 'denied' rules match anywhere and are checked in order. Anything else is an airport question; evidence assessment is the second line of defence. A classifier never authorizes a sensitive action. Add a language by adding a block under 'languages'; no code change needed.",
+  "languages": {
+    "en": {
+      "greeting": [
+        {
+          "id": "greeting",
+          "patterns": [
+            "(hi|hello|hey|hiya|howdy|namaste|greetings|good (morning|afternoon|evening))( there| kiosk| everyone| guide)?",
+            "(how are you|how are you doing|whats up|what is up)( today)?"
+          ]
+        },
+        {
+          "id": "thanks",
+          "patterns": ["(thanks|thank you|cheers|many thanks)( very much| so much| a lot)?"]
+        },
+        {
+          "id": "goodbye",
+          "patterns": ["(bye|goodbye|see you|see you later|have a nice day|have a good day)"]
+        }
+      ],
+      "denied": [
+        {
+          "id": "fit_to_fly",
+          "patterns": ["\\bfit to fly\\b", "\\bfitness to fly\\b"]
+        },
+        {
+          "id": "medical",
+          "patterns": [
+            "\\b(chest pain|heart attack|stroke|seizure|bleeding|unconscious|faint(ing)?|dizzy|nauseous)\\b",
+            "\\b(which|what) (medicine|medication|pills?|drugs?|tablets?)\\b",
+            "\\b(medicine|medication|painkillers?|aspirin|ibuprofen|paracetamol|dosage|prescri\\w+|diagnos\\w+|symptoms?)\\b",
+            "\\bi (feel|am feeling) (sick|ill|unwell|weak|faint|dizzy)\\b"
+          ]
+        },
+        {
+          "id": "flight_status",
+          "patterns": [
+            "\\bstatus of (my |the |our )?(\\w+ )?flight\\b",
+            "\\bflight (status|information|updates?)\\b",
+            "\\bflight\\s+[a-z]{2,3}\\s?\\d{1,4}\\b",
+            "\\bflight\\b.*\\b(delayed|cancelled|canceled|on time)\\b",
+            "\\b(is|are|has|was) (my |the |our )?(\\w+ )?(flight|plane)\\b.*\\b(landed|departed|late)\\b"
+          ]
+        },
+        {
+          "id": "live_gate",
+          "patterns": [
+            "\\bwhich gate\\b.*\\b(flight|leaving|departing|boarding|going)\\b",
+            "\\b(my|our) (\\w+ ){0,4}flight\\b.*\\bgate\\b",
+            "\\bgate\\b.*\\b(my|our) (\\w+ ){0,4}flight\\b",
+            "\\bgate (change|changes|assignment|assigned)\\b",
+            "\\bwhat gate (is|will|does)\\b.*\\b(flight|leave|depart|board)\\b"
+          ]
+        },
+        {
+          "id": "visa",
+          "patterns": [
+            "\\bvisas?\\b",
+            "\\b(enter|entry (in)?to|admitted (in)?to) (the |this )?(country|nation)\\b",
+            "\\bentry requirements?\\b",
+            "\\b(residence|work|transit) permits?\\b"
+          ]
+        },
+        {
+          "id": "rebook",
+          "patterns": [
+            "\\b(rebook|re book|reschedule)\\b",
+            "\\b(change|cancel|amend) my (flight|booking|ticket|reservation)\\b",
+            "\\bbook (me|us) (on|onto|a|an|the)\\b",
+            "\\bbook (a |an |me a )?(flight|ticket|seat)s?\\b"
+          ]
+        },
+        {
+          "id": "fare",
+          "patterns": [
+            "\\b(how much|price|prices|cost|costs|fare|fares|charge|charges|rate|rates)\\b.*\\b(taxi|cab|metro|train|bus|ticket|tickets|ride|parking|transfer|ubers?)\\b",
+            "\\b(taxi|cab|metro|train|bus|ticket|tickets|ride|parking|transfer|ubers?)\\b.*\\b(how much|price|prices|cost|costs|fare|fares|charge|charges)\\b"
+          ]
+        },
+        {
+          "id": "other_airport",
+          "patterns": [
+            "\\b(dxb|auh|doh|jfk|lhr|lgw|cdg|fra|ams|sin|hkg|del|bom|ruh|jed|cai|ist|ord|lax|atl)\\b",
+            "\\b(dubai international|heathrow|gatwick|changi|schiphol|charles de gaulle|jfk airport|abu dhabi international|hamad international)\\b"
+          ]
+        },
+        {
+          "id": "lost_aircraft",
+          "patterns": [
+            "\\b(left|forgot|lost|dropped|misplaced)\\b.*\\b(on|in|at) (the |my |an? )?(plane|aircraft|airplane|flight|seat)\\b",
+            "\\bwhat (row|seat)\\b.*\\b(i|was|sat|sitting)\\b",
+            "\\b(my|which) seat (number|was)\\b"
+          ]
+        },
+        {
+          "id": "weather",
+          "patterns": [
+            "\\b(weather|fog|foggy|storm|storms|sandstorm|snow|snowing|thunder\\w*|hurricane|forecast)\\b",
+            "\\bwill\\b.*\\bdelay\\w*\\b",
+            "\\bany delays\\b"
+          ]
+        }
+      ]
+    }
+  }
+}

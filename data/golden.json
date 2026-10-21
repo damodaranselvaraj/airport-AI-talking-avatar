@@ -1,0 +1,93 @@
+{
+  "title": "Dam Guide — expected output for grading",
+  "how_to_use": "Play expected_demo/index.html for students. Score a live demo on facts, citations, refusals, Ditto face, and language — not on whether they used Sonic or Wispr+Kokoro.",
+  "demo_script": [
+    {
+      "beat": 1,
+      "name": "Grounded gate answer",
+      "traveler": "Hi, where is gate C22?",
+      "lang": "en",
+      "expect_tool": "search_airport",
+      "expect_query_contains": ["C22"],
+      "expect_citation_any": ["gates.md", "faq.md"],
+      "expect_spoken_must_contain_any": [
+        "Terminal 2",
+        "Concourse C",
+        "12 minute",
+        "twelve minute",
+        "Date Palm"
+      ],
+      "expect_spoken_must_not_contain": ["Terminal 1", "Terminal 3", "on time", "delayed"],
+      "face": "default concierge",
+      "mouth": "must move while speaking",
+      "pass_line": "Gate C22 is in Terminal 2, Concourse C, Level 2. From T2 security it is about a twelve-minute walk. The nearest café is Date Palm Café, two minutes before the gate."
+    },
+    {
+      "beat": 2,
+      "name": "Refuse live flight status",
+      "traveler": "What's the status of flight Dam 442?",
+      "lang": "en",
+      "expect_tool": "search_airport",
+      "expect_citation_note": "Empty retrieval or faq.md line that this guide does not know live flights. Do not treat a gate number as a citation for this question.",
+      "expect_spoken_must_contain_any": [
+        "don't know",
+        "do not know",
+        "can't see",
+        "cannot see",
+        "screens",
+        "airline desk",
+        "information desk"
+      ],
+      "expect_spoken_must_not_contain": [
+        "on time",
+        "delayed",
+        "departed",
+        "boarding",
+        "gate C",
+        "gate B",
+        "Dam 442 leaves"
+      ],
+      "face": "default concierge",
+      "mouth": "must move while speaking",
+      "pass_line": "I can't see live flights. Please check the departure screens or the airline desk. I only know the building."
+    },
+    {
+      "beat": 3,
+      "name": "Photo becomes the avatar",
+      "traveler": "Where is gate C22?",
+      "lang": "en",
+      "expect_face": "the captured or uploaded photo, not the default concierge",
+      "expect_same_facts_as_beat": 1,
+      "mouth": "must move on the new face",
+      "pass_line": "Same C22 answer as beat 1, spoken on the traveler's photo."
+    },
+    {
+      "beat": 4,
+      "name": "Answer in the traveler's language",
+      "traveler": "गेट C22 कहाँ है?",
+      "lang": "hi",
+      "alt_traveler": "¿Dónde está la puerta C22?",
+      "alt_lang": "es",
+      "expect_spoken_language": "same as traveler (hi or es or fr)",
+      "expect_spoken_must_contain_any": ["C22", "टर्मिनल 2", "Terminal 2"],
+      "expect_spoken_must_not_contain": ["I don't understand", "please speak English"],
+      "face": "session photo from beat 3",
+      "mouth": "must move",
+      "pass_line_hi": "गेट C22 टर्मिनल 2, Concourse C, लेवल 2 पर है। T2 सिक्योरिटी से लगभग 12 मिनट की पैदल दूरी है। सबसे पास कैफ़े Date Palm Café है।",
+      "pass_line_es": "La puerta C22 está en la Terminal 2, muelle C, nivel 2. Desde seguridad de T2 son unos 12 minutos a pie. El café más cercano es Date Palm Café."
+    }
+  ],
+  "scoring": {
+    "pass_if": [
+      "Beat 1 facts match gates.md",
+      "Beat 2 refuses and does not invent a status",
+      "Citation visible on beat 1",
+      "Session photo is the face on beat 3+",
+      "Mouth not frozen while audio plays",
+      "Beat 4 spoken in traveler language",
+      "No AWS keys in the browser"
+    ],
+    "ditto_required": true,
+    "ditto_note": "The live app must run Ditto on the session photo + Sonic WAV. A CSS mouth or a still JPEG next to audio is a fail."
+  }
+}

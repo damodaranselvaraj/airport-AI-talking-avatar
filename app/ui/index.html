@@ -1,0 +1,101 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Dam International Airport - Information Kiosk</title>
+    <link rel="icon" href="data:," />
+    <link rel="stylesheet" href="/kiosk.css" />
+  </head>
+  <body>
+    <main class="kiosk" data-state="idle">
+      <header>
+        <h1>Dam International Airport</h1>
+        <p class="subtitle">Information kiosk. Ask about gates, food, transport and services.</p>
+      </header>
+
+      <p id="status" class="status" role="status" aria-live="polite">Ready</p>
+
+      <div class="layout">
+        <div class="col col-left">
+          <form id="ask-form" class="panel" autocomplete="off">
+            <label for="question">Your question</label>
+            <textarea
+              id="question"
+              name="question"
+              rows="2"
+              maxlength="500"
+              placeholder="Type here, or tap Speak"
+            ></textarea>
+            <p id="transcript-hint" class="hint" hidden></p>
+
+            <div class="actions">
+              <button type="submit" id="ask-btn" class="primary">Ask</button>
+              <button type="button" id="mic-btn" aria-pressed="false">
+                <span class="mic-dot" aria-hidden="true"></span>
+                <span id="mic-label">Speak</span>
+              </button>
+              <button type="button" id="clear-btn" class="quiet">Clear</button>
+            </div>
+          </form>
+
+          <section id="face-panel" class="panel face-panel" aria-labelledby="face-heading" hidden>
+            <h2 id="face-heading">Use your own face (optional)</h2>
+            <p class="hint">
+              Your photo is only used for this visit. It stays on this kiosk, is never sent to the internet,
+              and is deleted when you press the reset button or when the kiosk resets after a quiet moment.
+            </p>
+            <label class="check" for="face-consent">
+              <input type="checkbox" id="face-consent" />
+              I agree to use my photo for this visit
+            </label>
+            <div class="actions">
+              <button type="button" id="face-upload-btn">Upload photo</button>
+              <button type="button" id="face-camera-btn">Take photo</button>
+              <button type="button" id="face-reset-btn" class="quiet" hidden>Use default concierge</button>
+            </div>
+            <input type="file" id="face-file" accept="image/png,image/jpeg,image/webp" hidden />
+            <div id="camera" class="camera" hidden>
+              <video id="camera-preview" autoplay playsinline muted aria-label="Camera preview"></video>
+              <div class="actions">
+                <button type="button" id="camera-snap" class="primary">Capture</button>
+                <button type="button" id="camera-cancel" class="quiet">Cancel</button>
+              </div>
+            </div>
+            <p id="face-status" class="hint" role="status" aria-live="polite"></p>
+          </section>
+        </div>
+
+        <div class="col col-right">
+          <section id="face" class="face" aria-label="Airport concierge" hidden>
+            <div class="face-stage">
+              <img id="face-still" alt="" width="512" height="512" />
+              <video id="avatar-video" playsinline preload="auto" aria-label="The concierge speaking" hidden></video>
+            </div>
+            <p id="face-note" class="hint face-note" hidden></p>
+          </section>
+
+          <section id="answer-panel" class="panel answer" aria-labelledby="answer-heading" hidden>
+            <h2 id="answer-heading">Answer</h2>
+            <p id="answer-text" class="answer-text" aria-live="polite"></p>
+            <p id="citation" class="citation" hidden></p>
+            <p id="audio-note" class="hint" hidden></p>
+            <button type="button" id="replay-btn" hidden>Play answer</button>
+          </section>
+        </div>
+      </div>
+
+      <audio id="player" preload="auto"></audio>
+
+      <div id="idle-dialog" class="dialog" role="alertdialog" aria-modal="true"
+           aria-labelledby="idle-title" aria-describedby="idle-desc" hidden>
+        <div class="dialog-box">
+          <h2 id="idle-title">Still there?</h2>
+          <p id="idle-desc" class="dialog-text"></p>
+          <button type="button" id="idle-stay" class="primary">Yes, I'm here</button>
+        </div>
+      </div>
+    </main>
+    <script src="/kiosk.js" defer></script>
+  </body>
+</html>

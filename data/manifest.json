@@ -1,0 +1,15 @@
+{
+  "airport": "Noor International Airport",
+  "iata": "DIA",
+  "closed_world": true,
+  "documents": [
+    {"id": "terminals", "title": "Terminals and airlines", "lang": "en", "source": "data/terminals.md"},
+    {"id": "gates", "title": "Gates and last-call", "lang": "en", "source": "data/gates.md"},
+    {"id": "security", "title": "Security screening", "lang": "en", "source": "data/security.md"},
+    {"id": "transport", "title": "Metro, taxi, car park, hotel shuttle", "lang": "en", "source": "data/transport.md"},
+    {"id": "amenities", "title": "Prayer room, medical, lost and found, wifi", "lang": "en", "source": "data/amenities.md"},
+    {"id": "hours", "title": "Opening hours and phones", "lang": "en", "source": "data/hours.md"},
+    {"id": "faq", "title": "Short spoken answers", "lang": "en", "source": "data/faq.md"}
+  ],
+  "do_not_ingest": ["unknown_traps.json", "README.md", "manifest.json"]
+}

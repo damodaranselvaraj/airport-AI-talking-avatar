@@ -1,0 +1,32 @@
+{
+  "version": 1,
+  "notes": "Approved wording, spoken verbatim by TTS. Facts here are copied from data/*.md. Keep sentences short. These strings must never contain a 'must_not_contain' phrase from data/unknown_traps.json (tests enforce this).",
+  "languages": {
+    "en": {
+      "greeting": "Hello, and welcome to Dam International Airport. I can help with gates, food, restrooms, transport and services in the building. What would you like to know?",
+      "thanks": "You're welcome. Is there anything else I can help you find?",
+      "goodbye": "Goodbye, and have a safe journey.",
+      "fallback": "I can't confirm that from the airport information I have. Please check the departure screens, or ask at an information desk or your airline desk.",
+      "error": "Sorry, something went wrong on my side. Please try again, or ask at an information desk.",
+      "refusal": {
+        "flight_status": "I don't have live flight information, so I can't confirm flight times or progress. Please check the departure screens or ask at your airline desk.",
+        "live_gate": "I don't have live assignments, so I can't say where a particular flight is leaving from today. Please check the departure screens or ask at your airline desk.",
+        "visa": "I can't advise on visas or entry rules. That is a matter for immigration, so please ask your airline desk or an immigration officer.",
+        "fit_to_fly": "The clinic does not issue fit-to-fly letters for missed flights. That is the airline's decision, so please speak to your airline desk.",
+        "medical": "I can't give medical advice. In an emergency, use a yellow help point or ask any staff member, and they will radio the clinic. The clinic is in Terminal 2, Level 0, landside, and is open 24 hours.",
+        "fare": "I don't have prices or fares, because they change. Please ask the operator or an information desk.",
+        "rebook": "I can't change or book flights, and information desks don't rebook flights either. Please speak to your airline desk.",
+        "other_airport": "I only have information about Dam International Airport, so I can't help with other airports.",
+        "lost_aircraft": "Items left on an aircraft are handled by the airline, so please ask at your airline desk. I can't look up where you were sitting.",
+        "weather": "I don't have weather or operations information, so I can't say whether departures will be affected. Please check the departure screens or ask at your airline desk.",
+        "out_of_scope": "I can only help with questions about Dam International Airport, such as gates, food, restrooms, transport and services."
+      },
+      "guardrail": {
+        "EMPTY_INPUT": "Please ask me an airport-related question.",
+        "INPUT_TOO_LONG": "Please shorten your question and try again.",
+        "PROMPT_INJECTION": "I can help with airport information, facilities, and passenger assistance.",
+        "JAILBREAK": "I can help with airport information, facilities, and passenger assistance."
+      }
+    }
+  }
+}
