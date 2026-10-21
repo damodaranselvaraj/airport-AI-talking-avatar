@@ -1,20 +1,25 @@
 """Online retrieval components: dense, sparse, RRF fusion and Cohere reranking."""
 from __future__ import annotations
 
+import logging
 import math
+from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
-from typing import TYPE_CHECKING, Any, Optional
+from typing import TYPE_CHECKING, Any, Optional, Union
 
 from app.retrieval.embedding import DenseEmbedder
 from app.retrieval.errors import StartupValidationError
 from app.retrieval.sparse import Bm25Index
 from app.retrieval.store import ChromaStore
+from app.security import scrub
 from app.workflow.contracts import ErrorState, RetrievedPassage
 
 if TYPE_CHECKING:
     from config.settings import Settings
 
 _COHERE_TIMEOUT_SECONDS = 10.0
+
+logger = logging.getLogger(__name__)
 
 
 class DenseRetriever:
@@ -166,6 +171,9 @@ class HybridRetriever:
         # Set by every retrieve() call: ErrorState(stage="rerank") when the Cohere
         # rerank failed and the fused order was returned instead, else None.
         self.last_error: Optional[ErrorState] = None
+        # Set by every retrieve_with_status() call: list of failed stages ("dense", "sparse")
+        # when a retriever raised or returned empty; empty list when both succeeded.
+        self.last_degraded: list[str] = []
 
     @classmethod
     def from_settings(cls, settings: "Settings") -> "HybridRetriever":
@@ -183,6 +191,39 @@ class HybridRetriever:
             max_candidates=settings.reranker_max_candidates,
         )
         return cls(settings, embedder, chroma, bm25, reranker)
+
+    def _run_dense_sparse(
+        self, query: str
+    ) -> tuple[Union[list[tuple[str, float]], Exception], Union[list[tuple[str, float]], Exception]]:
+        """Run dense and sparse retrieval concurrently; return each as result-or-exception.
+
+        Uses ThreadPoolExecutor(max_workers=2) to overlap the I/O-bound dense retrieval
+        (OpenAI embed + Chroma) with the CPU-bound sparse retrieval (local BM25). Neither
+        exception propagates; both outcomes are captured and returned so the caller can
+        decide how to handle partial failure.
+        
+        Returns: (dense_outcome, sparse_outcome) where each is either a list[(chunk_id, score)]
+                 or an Exception instance.
+        """
+        s = self._settings
+        with ThreadPoolExecutor(max_workers=2) as executor:
+            dense_future = executor.submit(self._dense.retrieve, query, s.dense_top_k)
+            sparse_future = executor.submit(self._sparse.retrieve, query, s.sparse_top_k)
+
+            dense_outcome: Union[list[tuple[str, float]], Exception]
+            sparse_outcome: Union[list[tuple[str, float]], Exception]
+
+            try:
+                dense_outcome = dense_future.result()
+            except Exception as exc:
+                dense_outcome = exc
+
+            try:
+                sparse_outcome = sparse_future.result()
+            except Exception as exc:
+                sparse_outcome = exc
+
+            return dense_outcome, sparse_outcome
 
     def retrieve(self, query: str, top_k: int) -> list[RetrievedPassage]:
         passages, error = self.retrieve_with_status(query, top_k)
@@ -249,20 +290,51 @@ class HybridRetriever:
     ) -> tuple[list[RetrievedPassage], Optional[ErrorState]]:
         """Return up to ``top_k`` passages and a rerank-not-applied signal.
 
+        Dense and sparse retrieval run concurrently. If one fails, the pipeline continues
+        with the survivor; only when both fail (or both return empty) does this return [].
+        Failed stages are recorded in ``self.last_degraded`` (reset at the start of each call).
+
         Pipeline stages use the wider Settings values for recall:
-          - dense_top_k  → initial dense candidates
-          - sparse_top_k → initial BM25 candidates
+          - dense_top_k  → initial dense candidates (concurrent)
+          - sparse_top_k → initial BM25 candidates (concurrent)
           - rrf_k / hybrid_top_k → fusion width
 
         ``top_k`` (this parameter) is the *final* count passed to Cohere reranking
         and returned to the caller. It always governs the output size; Settings
         values only control upstream recall breadth.
         """
+        # Reset degradation tracking
+        self.last_degraded = []
+        
         if not query or not query.strip() or top_k <= 0:
             return [], None  # nothing is invoked for an empty/whitespace query
+        
         s = self._settings
-        dense = self._dense.retrieve(query, s.dense_top_k)
-        sparse = self._sparse.retrieve(query, s.sparse_top_k)
+        
+        # Run dense and sparse concurrently
+        dense_outcome, sparse_outcome = self._run_dense_sparse(query)
+        
+        # Unpack outcomes: result or exception
+        dense: list[tuple[str, float]] = []
+        sparse: list[tuple[str, float]] = []
+        
+        if isinstance(dense_outcome, Exception):
+            logger.warning("Dense retrieval failed: %s", scrub(repr(dense_outcome))[:200])
+            self.last_degraded.append("dense")
+        else:
+            dense = dense_outcome
+        
+        if isinstance(sparse_outcome, Exception):
+            logger.warning("Sparse (BM25) retrieval failed: %s", scrub(repr(sparse_outcome))[:200])
+            self.last_degraded.append("sparse")
+        else:
+            sparse = sparse_outcome
+        
+        # Both failed or both empty → hard failure
+        if not dense and not sparse:
+            return [], None
+        
+        # Fuse whatever survived (RrfFuser handles empty inputs gracefully)
         fused = self._fuser.fuse([dense, sparse], s.rrf_k, s.hybrid_top_k)
         if not fused:
             return [], None
@@ -272,6 +344,7 @@ class HybridRetriever:
         if not candidates:
             return [], None
 
+        # Rerank stage (unchanged, including its ErrorState fallback)
         error: Optional[ErrorState] = None
         try:
             ranked = self._reranker.rerank(query, candidates, top_k)

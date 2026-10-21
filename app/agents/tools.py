@@ -7,7 +7,7 @@ LLM call:        NONE directly. The tool runs the existing hybrid retriever, whi
                  it is a LangChain ``@tool`` so it has a typed schema, can be invoked uniformly
                  and can be bound to a model later without rewriting it.
 Inputs:          ``query`` (the passenger's question text)
-Outputs:         ``{"passages": [{chunk_id, text, source, score}, ...], "rerank_applied": bool}``
+Outputs:         ``{"passages": [{chunk_id, text, source, score}, ...], "rerank_applied": bool, "retrieval_degraded": bool}``
                  Plain dicts, so the result is JSON-serializable and framework neutral.
 
 Two ways to get the tool:
@@ -46,6 +46,8 @@ def _run_search(search: AirportSearch, query: str) -> dict:
         ],
         # Evidence grading needs this: without a rerank the scores are on a different scale.
         "rerank_applied": found.rerank_applied,
+        # Evidence grading also needs this: single-source retrieval must be capped at MEDIUM.
+        "retrieval_degraded": found.retrieval_degraded,
     }
 
 

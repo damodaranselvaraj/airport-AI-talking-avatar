@@ -9,7 +9,7 @@ LLM call:        NONE. Retrieval does call external APIs (OpenAI embeddings for 
                  Cohere for the rerank) but no chat model is involved. Evidence grading is pure
                  Python thresholds.
 Reads:           ``request``
-Writes:          ``passages``, ``rerank_applied`` (retrieve) and ``tier`` (evidence_evaluator).
+Writes:          ``passages``, ``rerank_applied``, ``retrieval_degraded`` (retrieve) and ``tier`` (evidence_evaluator).
 
 The main graph reads ``tier`` after this sub-graph: STRONG goes on to the Answer agent, MEDIUM and
 WEAK go to the fallback. Each inner node is wrapped with ``safe_node`` so a failure here leaves
@@ -38,7 +38,11 @@ def make_retrieve_node(runner: TimeoutRunner, search_tool: BaseTool) -> Callable
         # ``.invoke`` goes through the tool's schema validation, exactly as an LLM tool call would.
         found = runner.run(search_tool.invoke, {"query": query})
         passages = [RetrievedPassage(**item) for item in found["passages"]]
-        return {"passages": passages, "rerank_applied": bool(found["rerank_applied"])}
+        return {
+            "passages": passages,
+            "rerank_applied": bool(found["rerank_applied"]),
+            "retrieval_degraded": bool(found.get("retrieval_degraded", False)),
+        }
 
     return retrieve_node
 
@@ -48,7 +52,11 @@ def make_evidence_evaluator_node(assessor: EvidenceAssessor) -> Callable[[AgentS
 
     def evidence_evaluator_node(state: AgentState) -> dict:
         """Graph node: grade the passages STRONG / MEDIUM / WEAK from the top rerank score."""
-        tier = assessor.assess(state.get("passages", []), state.get("rerank_applied", True))
+        tier = assessor.assess(
+            state.get("passages", []),
+            state.get("rerank_applied", True),
+            state.get("retrieval_degraded", False),
+        )
         return {"tier": tier}
 
     return evidence_evaluator_node

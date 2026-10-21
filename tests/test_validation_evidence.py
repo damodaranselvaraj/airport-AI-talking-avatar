@@ -38,6 +38,27 @@ def test_no_passages_is_weak_and_rerank_failure_caps_at_medium():
     assert a.assess([], rerank_applied=False) is EvidenceTier.WEAK
 
 
+def test_retrieval_degraded_caps_at_medium():
+    """When retrieval_degraded=True, always MEDIUM (single-source can never be STRONG)."""
+    a = EvidenceAssessor(EvidenceThresholds(0.5, 0.2, calibrated=True))
+    # Would be STRONG without degradation → MEDIUM
+    assert a.assess([passage(0.9)], retrieval_degraded=True) is EvidenceTier.MEDIUM
+    # Would be MEDIUM → MEDIUM
+    assert a.assess([passage(0.3)], retrieval_degraded=True) is EvidenceTier.MEDIUM
+    # Would be WEAK → MEDIUM (retrieved something, can't confirm relevance)
+    assert a.assess([passage(0.1)], retrieval_degraded=True) is EvidenceTier.MEDIUM
+    # Empty stays WEAK
+    assert a.assess([], retrieval_degraded=True) is EvidenceTier.WEAK
+
+
+def test_both_rerank_and_retrieval_degraded():
+    """Both degraded flags set → always MEDIUM (non-empty) or WEAK (empty)."""
+    a = EvidenceAssessor(EvidenceThresholds(0.5, 0.2, calibrated=True))
+    assert a.assess([passage(0.9)], rerank_applied=False, retrieval_degraded=True) is EvidenceTier.MEDIUM
+    assert a.assess([passage(0.1)], rerank_applied=False, retrieval_degraded=True) is EvidenceTier.MEDIUM
+    assert a.assess([], rerank_applied=False, retrieval_degraded=True) is EvidenceTier.WEAK
+
+
 def test_invalid_thresholds_rejected():
     with pytest.raises(ValueError):
         EvidenceThresholds(strong=0.2, medium=0.5)

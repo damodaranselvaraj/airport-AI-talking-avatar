@@ -192,37 +192,17 @@ AI-Talking-Avatar-Kiosk/
 | `validation_agent.py` | validation, fallback and error nodes |
 | `graph.py` | `MultiAgentKioskWorkflow`: wiring and `run()` |
 
-## Delivery stages (gates)
+## Setup of project and execution
 
-1. **Stage 1 — Grounded text.** *(built)* Knowledge base + retrieval + evidence
-   assessment + grounded answer with a visible citation, plus deterministic
-   refusal. A typed gate question returns correct facts; an unsupported
-   question is refused. Jev validation is deferred; the deterministic
-   citation-overlap validator is used (see "Answer validation" below).
-   *Sign-off still needs your in-scope question set to calibrate the evidence
-   thresholds (see "Calibrating evidence thresholds").*
-2. **Stage 2 — Voice, still face.** *(built)* Mic → Whisper → workflow → Kokoro audio,
-   with a visible, correctable transcript. Keys never reach the browser.
-3. **Stage 3 — Ditto + photo.** *(built)* The default concierge and an
-   uploaded or webcam-captured face both talk, driven by the turn's audio. Full
-   kiosk UI state machine (idle / listening / thinking / speaking / error) with
-   captions, and a "Still there?" prompt that resets the face and the page for the
-   next traveler. See "Talking avatar (Stage 3)" below. *Sign-off needs you to
-   supply the default concierge image (see below).*
-4. **Stage 4 — Hardening + language-ready.** i18n-ready config, monitoring,
-   on-hardware performance measurement, graceful failure handling, docs, and a
-   repeatable demo.
+This section covers complete setup from Python installation through running the kiosk. All commands below are PowerShell, run from the project root. The server runs on your machine and is reached at `127.0.0.1` only.
 
-## Run it in the browser
+> **Avatar:** by default (`AVATAR_ENABLED=true`) the kiosk shows the talking avatar. Follow [`docs/ditto-setup.md`](docs/ditto-setup.md) for Ditto setup (conda env, weights, GPU configuration). Set `AVATAR_ENABLED=false` in `.env` to disable the avatar (text + spoken answer only, no video).
 
-Everything below is PowerShell, run from the project root. You ask questions in
-a web page and get the answer back in the same page (text, citation, and spoken
-audio). The server runs on your machine and is reached at `127.0.0.1` only.
-
-> **Avatar:** by default (`AVATAR_ENABLED=false`) the page shows the text answer,
-> the source document, and plays the spoken answer; nothing visual talks, and Ditto,
-> PyTorch and the GPU are not needed. To get the talking face, follow
-> "Talking avatar (Stage 3)" below.
+> **Default configuration:** 
+> - `AVATAR_ENABLED=true` — Talking avatar enabled (requires Ditto setup)
+> - `LANGSMITH_TRACING=true` — Observability enabled (get free API key at https://smith.langchain.com)
+> - `CHROMA_DIR=chroma_db` — Vector database storage location
+> - `BM25_INDEX_PATH=.bm25/knowledge_base.pkl` — Sparse retrieval index location
 
 ### 1. Prerequisites
 
@@ -257,14 +237,13 @@ Open `.env` and replace the placeholder values of:
 
 The other values in `.env.example` have working defaults, including
 `OPENAI_CLASSIFIER_MODEL=gpt-4o-mini` (the supervisor's intent classifier; it uses the same
-`OPENAI_API_KEY`). `.env` is gitignored
-and read by the server only; keys are never sent to the browser. Keep
-`MANIFEST_PATH=data/manifest.json` and `DOCUMENT_ROOT=data` as in the example.
+`OPENAI_API_KEY`), `AVATAR_ENABLED=true` (talking avatar on by default; see [`docs/ditto-setup.md`](docs/ditto-setup.md) for setup), 
+`LANGSMITH_TRACING=true` (observability enabled), `CHROMA_DIR=chroma_db`, and `BM25_INDEX_PATH=.bm25/knowledge_base.pkl`. 
+`.env` is gitignored and read by the server only; keys are never sent to the browser. 
+Keep `MANIFEST_PATH=data/manifest.json` and `DOCUMENT_ROOT=data` as in the example.
 
 `CHROMA_DIR` and `BM25_INDEX_PATH` tell both ingestion and the server where the
-indexes live, so they must not change between the two. The example uses
-`chroma_db`; this repo's checked-in layout uses `.chroma` (already in
-`.gitignore`), so set `CHROMA_DIR=.chroma` if you want to reuse those indexes.
+indexes live, so they must not change between the two.
 
 ### 3. Index the knowledge base
 
@@ -493,7 +472,7 @@ Ditto (talking-head model) runs on the GPU as a **warm worker**: a separate proc
 in its own conda env (`ditto`, Python 3.10) that loads the models once and renders
 one video per job. The FastAPI app starts it, restarts it if it dies, and talks to
 it with JSON lines over stdio (no extra port). Whisper and Kokoro stay on the CPU.
-Set-up of the env and weights is in [`Notes/docs/ditto-setup.md`](Notes/docs/ditto-setup.md).
+Set-up of the env and weights is in [`docs/ditto-setup.md`](docs/ditto-setup.md).
 
 ### Turn on the avatar
 

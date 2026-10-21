@@ -1,4 +1,4 @@
-# Ditto setup (Task 2 — verified on RTX 4050)
+# Ditto setup
 
 Ditto runs in its **own isolated conda env** (`ditto`, Python 3.10) so its heavy,
 version-pinned dependencies never collide with the FastAPI app's `.venv`

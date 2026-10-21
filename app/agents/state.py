@@ -5,20 +5,21 @@ the keys it changed; LangGraph merges that into the running state (that is why `
 
 Which agent writes which key:
 
-    request           caller (``MultiAgentKioskWorkflow.run``)   the passenger's question
-    guardrail_status  input_guardrail                            "ALLOW" or "BLOCK"
-    guardrail_reason  input_guardrail                            EMPTY_INPUT | INPUT_TOO_LONG | ...
-    decision          supervisor                                 route (greeting/out_of_scope/airport)
-    passages          RAG sub-graph: retrieve                    reranked document chunks
-    rerank_applied    RAG sub-graph: retrieve                    False when Cohere rerank failed
-    tier              RAG sub-graph: evidence_evaluator          STRONG / MEDIUM / WEAK
-    generated         answer agent                               gpt-4o's structured answer
-    cited             answer agent                               the passages the answer relied on
-    validation        validation agent                           supported / not supported
-    result            greeting|deny|finalize|fallback|error|     the approved ``AnswerResult``
-                      guardrail_result                           (what the kiosk shows / speaks)
-    error             any node (via ``safe_node``)               set when a stage raised
-    timings           any node (via ``safe_node``)               per-stage milliseconds
+    request              caller (``MultiAgentKioskWorkflow.run``)   the passenger's question
+    guardrail_status     input_guardrail                            "ALLOW" or "BLOCK"
+    guardrail_reason     input_guardrail                            EMPTY_INPUT | INPUT_TOO_LONG | ...
+    decision             supervisor                                 route (greeting/out_of_scope/airport)
+    passages             RAG sub-graph: retrieve                    reranked document chunks
+    rerank_applied       RAG sub-graph: retrieve                    False when Cohere rerank failed
+    retrieval_degraded   RAG sub-graph: retrieve                    True when dense or sparse failed
+    tier                 RAG sub-graph: evidence_evaluator          STRONG / MEDIUM / WEAK
+    generated            answer agent                               gpt-4o's structured answer
+    cited                answer agent                               the passages the answer relied on
+    validation           validation agent                           supported / not supported
+    result               greeting|deny|finalize|fallback|error|     the approved ``AnswerResult``
+                         guardrail_result                           (what the kiosk shows / speaks)
+    error                any node (via ``safe_node``)               set when a stage raised
+    timings              any node (via ``safe_node``)               per-stage milliseconds
 
 All value types are the existing contracts from ``app/workflow``; none are redefined here.
 """
@@ -51,6 +52,7 @@ class AgentState(TypedDict, total=False):
     decision: RouteDecision
     passages: list[RetrievedPassage]
     rerank_applied: bool
+    retrieval_degraded: bool
     tier: EvidenceTier
     generated: GeneratedAnswer
     cited: list[RetrievedPassage]

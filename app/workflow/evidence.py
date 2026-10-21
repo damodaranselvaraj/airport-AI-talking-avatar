@@ -63,26 +63,35 @@ class EvidenceAssessor:
         return self.thresholds.calibrated
 
     def assess(
-        self, passages: Sequence[RetrievedPassage], rerank_applied: bool = True
+        self,
+        passages: Sequence[RetrievedPassage],
+        rerank_applied: bool = True,
+        retrieval_degraded: bool = False,
     ) -> EvidenceTier:
         """Grade the evidence.
 
-        No passages -> WEAK. When the Cohere rerank did not run, scores are RRF
+        No passages → WEAK. When the Cohere rerank did not run, scores are RRF
         scores on a different scale, so the tier is capped at MEDIUM (fallback).
+        When retrieval was degraded (one retriever failed; single-source result),
+        the tier is also capped at MEDIUM: a single-source reranked result can
+        never be STRONG, so it routes to the safe fallback like other degraded modes.
         """
         if not passages:
             return EvidenceTier.WEAK
+        
+        # Degraded modes: when rerank didn't run or retrieval failed, scores aren't
+        # comparable to the calibrated thresholds. Return MEDIUM ("retrieved something,
+        # could not confirm full relevance") so degraded cases are distinguishable from
+        # genuinely weak evidence (empty passages). Both fall back safely.
+        if not rerank_applied or retrieval_degraded:
+            return EvidenceTier.MEDIUM
+        
+        # Normal path: apply thresholds
         top = max(p.score for p in passages)
         t = self.thresholds
         if top >= t.strong:
-            tier = EvidenceTier.STRONG
+            return EvidenceTier.STRONG
         elif top >= t.medium:
-            tier = EvidenceTier.MEDIUM
-        else:
-            tier = EvidenceTier.WEAK
-        if not rerank_applied:
-            # Scores are RRF scores here, not comparable to the rerank thresholds. Report
-            # MEDIUM ("retrieved something, could not confirm relevance") so the degraded
-            # case is distinguishable from genuinely weak evidence. Both fall back safely.
             return EvidenceTier.MEDIUM
-        return tier
+        else:
+            return EvidenceTier.WEAK

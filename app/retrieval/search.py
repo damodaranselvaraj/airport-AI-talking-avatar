@@ -18,6 +18,8 @@ logger = logging.getLogger(__name__)
 
 
 class _Retriever(Protocol):
+    last_degraded: list[str]
+    
     def retrieve_with_status(
         self, query: str, top_k: int
     ) -> tuple[list[RetrievedPassage], Optional[ErrorState]]: ...
@@ -28,6 +30,8 @@ class SearchResult:
     passages: list[RetrievedPassage] = field(default_factory=list)
     rerank_applied: bool = True
     error: Optional[ErrorState] = None
+    retrieval_degraded: bool = False
+    degraded_retrievers: list[str] = field(default_factory=list)
 
 
 class AirportSearch:
@@ -46,11 +50,23 @@ class AirportSearch:
 
     def search_airport(self, query: str) -> SearchResult:
         passages, error = self._retriever.retrieve_with_status(query, self._top_k)
+        
+        # Read retriever degradation status
+        degraded = self._retriever.last_degraded
+        if degraded:
+            logger.warning(
+                "Retrieval degraded (failed stages: %s): continuing with surviving retriever(s)",
+                ", ".join(degraded)
+            )
+        
         if error is not None:
             # Diagnostic only: scrubbed, truncated, and never includes the question.
             logger.warning("rerank not applied (%s): %s", error.stage, scrub(error.message)[:200])
+        
         return SearchResult(
             passages=list(passages),
             rerank_applied=error is None,
             error=error,
+            retrieval_degraded=bool(degraded),
+            degraded_retrievers=list(degraded),
         )

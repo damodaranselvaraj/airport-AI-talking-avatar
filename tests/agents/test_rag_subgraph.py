@@ -93,3 +93,32 @@ def test_subgraph_can_be_invoked_with_the_module_level_tool():
         assert out["tier"] is EvidenceTier.STRONG
     finally:
         configure_search(None)
+
+
+def test_degraded_retrieval_caps_tier_at_medium():
+    """Retrieval degraded (one retriever failed) → tier capped at MEDIUM."""
+    retriever = FakeRetriever([passage("a", 0.9)], degraded=["dense"])
+    out = build(retriever).invoke(request())
+    assert out["passages"] == [passage("a", 0.9)]
+    assert out["rerank_applied"] is True  # rerank succeeded
+    assert out["retrieval_degraded"] is True
+    assert out["tier"] is EvidenceTier.MEDIUM  # capped despite high score
+
+
+def test_healthy_retrieval_no_degradation():
+    """Healthy retrieval (no degradation) → retrieval_degraded=False, tier uses normal thresholds."""
+    retriever = FakeRetriever([passage("a", 0.9)], degraded=[])
+    out = build(retriever).invoke(request())
+    assert out["rerank_applied"] is True
+    assert out["retrieval_degraded"] is False
+    assert out["tier"] is EvidenceTier.STRONG  # not capped
+
+
+def test_both_rerank_and_retrieval_degraded():
+    """Both rerank and retrieval degraded → tier is MEDIUM."""
+    err = ErrorState(stage="rerank", message="down")
+    retriever = FakeRetriever([passage("a", 0.9)], error=err, degraded=["sparse"])
+    out = build(retriever).invoke(request())
+    assert out["rerank_applied"] is False
+    assert out["retrieval_degraded"] is True
+    assert out["tier"] is EvidenceTier.MEDIUM

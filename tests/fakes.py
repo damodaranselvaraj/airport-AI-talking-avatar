@@ -38,11 +38,13 @@ class FakeRetriever:
         passages: Sequence[RetrievedPassage] = (GATE_C22,),
         error: Optional[ErrorState] = None,
         raises: Optional[Exception] = None,
+        degraded: Optional[list[str]] = None,
     ) -> None:
         self.passages = list(passages)
         self.error = error
         self.raises = raises
         self.calls: list[str] = []
+        self.last_degraded = degraded if degraded is not None else []
 
     def retrieve_with_status(self, query: str, top_k: int):
         self.calls.append(query)
