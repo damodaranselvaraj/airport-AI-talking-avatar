@@ -391,6 +391,131 @@ Try the other paths the same way by changing `text`:
 | Camera does not open | Allow the camera for the site (lock icon) and use `127.0.0.1` or `localhost`; or upload a photo instead. |
 | The page reset while I was reading | The "Still there?" prompt timed out. Tap anywhere or **Yes, I'm here** to stay; timings are `FACE_IDLE_*` in `.env`. |
 
+## Development tool: ask.py
+
+`ask.py` is a command-line debugging tool that lets you test the retrieval pipeline and see exactly what each stage returns, without running the full kiosk server or workflow. It shows you the internal retrieval mechanics: what ChromaDB finds, what BM25 finds, how they fuse, and what Cohere reranks to the top.
+
+### What it does
+
+When you run `ask.py` with a question, it:
+
+1. **Loads the same retriever** the kiosk uses (`HybridRetriever` from `app.retrieval.retrievers`)
+2. **Runs all four retrieval stages** and prints the results of each:
+   - **ChromaDB dense** (semantic vector search with OpenAI embeddings)
+   - **BM25 sparse** (keyword/lexical search)
+   - **RRF fused** (reciprocal rank fusion combining dense + sparse)
+   - **Cohere rerank** (final reranked results)
+3. **Optionally calls the LLM** (OpenAI chat model) to generate an answer from the final passages, with citations
+
+Each stage shows up to a configurable number of results with their scores, source documents, chunk IDs, and text previews (or full text with `--full`).
+
+### Usage
+
+```powershell
+# One question, then exit
+python ask.py "Where is gate C22?"
+
+# Interactive mode - ask multiple questions
+python ask.py
+
+# Show more results per stage
+python ask.py --stage-k 10 "question"
+
+# Show full chunk text instead of preview
+python ask.py --full "question"
+
+# Skip the LLM answer, just show retrieval
+python ask.py --no-llm "question"
+
+# Change how many final passages to show (default: 5)
+python ask.py -k 3 "question"
+
+# Use a different OpenAI model for the answer
+python ask.py --model gpt-4o-mini "question"
+```
+
+### Requirements
+
+- The same `.env` configuration as the main server (needs `OPENAI_API_KEY`, `COHERE_API_KEY`)
+- **Indexes must exist**: run `python scripts/run_ingestion_pipeline.py` first
+- The Chroma directory (`CHROMA_DIR`) and BM25 index (`BM25_INDEX_PATH`) from `.env`
+
+The tool does **not** require the server to be running. It reads `.env`, loads the indexes, and calls OpenAI/Cohere directly.
+
+### What you see
+
+For each retrieval stage, `ask.py` prints:
+- How many results were found
+- For each result (up to `--stage-k` or `-k` limit):
+  - Rank and score
+  - Source document name
+  - Chunk ID
+  - Text preview (~200 chars) or full text with `--full`
+
+If Cohere rerank fails, it falls back to the RRF fused order and warns you.
+
+After the retrieval stages, if `--no-llm` is not set:
+- **Answer**: The LLM's generated answer with inline citations like [1], [2]
+- **Model**: Which OpenAI model was used
+- **Passages used**: List of source documents that were sent to the LLM
+
+### When to use it
+
+Use `ask.py` when you want to:
+- **Debug retrieval quality** without starting the full server or workflow
+- **See why a question isn't finding the right chunks** (inspect each stage's scores and results)
+- **Test document changes** quickly after re-ingesting
+- **Verify that Cohere reranking is working** (or see the fallback if your key is wrong)
+- **Prototype retrieval parameter changes** before modifying the workflow
+- **Compare different questions' retrieval patterns** in interactive mode
+
+It's faster than starting the full server and isolates the retrieval + LLM answer path from the multi-agent workflow, guardrails, and avatar rendering.
+
+### Example session
+
+```powershell
+python ask.py
+
+Ask a question (empty line, 'exit' or 'quit' to leave).
+> Where is the prayer room?
+
+=== 1. ChromaDB dense (5 of 12 shown) ===
+[1] score=0.8234  source=facilities.md  id=chunk_42
+    The interfaith prayer room is located on Level 2 near Gate B15...
+
+=== 2. BM25 sparse (5 of 8 shown) ===
+[1] score=3.4521  source=facilities.md  id=chunk_42
+    The interfaith prayer room is located on Level 2 near Gate B15...
+
+=== 3. RRF fused (5 of 12 shown) ===
+[1] score=0.0323  source=facilities.md  id=chunk_42
+    The interfaith prayer room is located on Level 2 near Gate B15...
+
+=== 4. Cohere rerank (final) (5 of 5 shown) ===
+[1] score=0.9876  source=facilities.md  id=chunk_42
+    The interfaith prayer room is located on Level 2 near Gate B15...
+
+=== Answer ===
+The interfaith prayer room is on Level 2, near Gate B15 [1].
+
+Model: gpt-4o
+Passages used:
+  [1] facilities.md
+
+> exit
+```
+
+### Error handling
+
+The tool validates your configuration and gives clear error messages:
+- Missing or invalid `.env` settings → lists which keys are missing
+- Chroma directory not found → tells you to run ingestion first
+- BM25 index not found → tells you to run ingestion first
+- OpenAI/Cohere API errors → explains what went wrong (auth, rate limits, network, etc.)
+- Stage failures (e.g., Cohere timeout) → shows which stage failed and continues with fallback
+
+All API keys and key-looking tokens are masked in the output with `***` for safety.
+
 ## Voice (Stage 2)
 
 Whisper (`faster-whisper`, `small.en`, int8) and Kokoro (`af_heart`) both run

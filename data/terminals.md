@@ -5,21 +5,21 @@ lang: en
 source: data/terminals.md
 ---
 
-# Noor International Airport — terminals
+# Dam International Airport — terminals
 
-Noor International Airport (IATA: **DIA**) has three passenger terminals connected airside by the Skywalk moving walkway. Allow **8 minutes** to walk T1↔T2 and **10 minutes** to walk T2↔T3. The Skywalk is open 24 hours.
+Dam International Airport (IATA: **DIA**) has three passenger terminals connected airside by the Skywalk moving walkway. Allow **8 minutes** to walk T1↔T2 and **10 minutes** to walk T2↔T3. The Skywalk is open 24 hours.
 
 ## Terminal 1 — Domestic and regional
 
 Terminal 1 (T1) handles domestic flights and short regional hops.
 
-- **Airlines:** NoorAir (DIA), Pearl Wings (PW)
+- **Airlines:** DamAir (DIA), Pearl Wings (PW)
 - **Gates:** A1–A20, all on Level 2 after security
 - **Check-in:** Level 1, rows 1–12. Opens 3 hours before departure; closes 45 minutes before departure
 - **Arrivals:** Level 0, baggage belts 1–6
 - **Best for:** travelers staying inside the country or flying to nearby cities
 
-NoorAir is the home carrier. Its ticket desk is T1 Level 1, opposite row 4.
+DamAir is the home carrier. Its ticket desk is T1 Level 1, opposite row 4.
 
 ## Terminal 2 — International long-haul
 

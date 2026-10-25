@@ -1,7 +1,7 @@
 {
   "version": 1,
   "calibrated": false,
-  "strong": 0.5,
+  "strong": 0.4,
   "medium": 0.2,
   "notes": "PLACEHOLDER thresholds on the top Cohere rerank relevance score (0..1). Conservative: they favour a safe fallback over a risky answer. Replace by running `python scripts/calibrate_evidence.py --write` once evaluation/question_set/in_scope.json exists. The service logs a warning at startup while 'calibrated' is false."
 }
