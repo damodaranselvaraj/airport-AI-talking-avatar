@@ -25,7 +25,7 @@ class FakeDenseRetriever:
         self.calls = 0
         self.call_time: Optional[float] = None
 
-    def retrieve(self, query: str, top_k: int) -> list[tuple[str, float]]:
+    def retrieve(self, query: str, top_k: int, lang: str = "en") -> list[tuple[str, float]]:
         self.calls += 1
         self.call_time = time.time()
         if self.delay:
@@ -50,7 +50,7 @@ class FakeSparseRetriever:
         self.calls = 0
         self.call_time: Optional[float] = None
 
-    def retrieve(self, query: str, top_k: int) -> list[tuple[str, float]]:
+    def retrieve(self, query: str, top_k: int, lang: str = "en") -> list[tuple[str, float]]:
         self.calls += 1
         self.call_time = time.time()
         if self.delay:

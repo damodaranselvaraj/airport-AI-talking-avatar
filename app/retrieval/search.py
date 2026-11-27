@@ -11,6 +11,7 @@ from typing import Optional, Protocol
 
 import logging
 
+from app import i18n
 from app.security import scrub
 from app.workflow.contracts import ErrorState, RetrievedPassage
 
@@ -21,7 +22,7 @@ class _Retriever(Protocol):
     last_degraded: list[str]
     
     def retrieve_with_status(
-        self, query: str, top_k: int
+        self, query: str, top_k: int, language: str = i18n.DEFAULT
     ) -> tuple[list[RetrievedPassage], Optional[ErrorState]]: ...
 
 
@@ -48,8 +49,8 @@ class AirportSearch:
         self._retriever = retriever
         self._top_k = top_k
 
-    def search_airport(self, query: str) -> SearchResult:
-        passages, error = self._retriever.retrieve_with_status(query, self._top_k)
+    def search_airport(self, query: str, language: str = i18n.DEFAULT) -> SearchResult:
+        passages, error = self._retriever.retrieve_with_status(query, self._top_k, language)
         
         # Read retriever degradation status
         degraded = self._retriever.last_degraded

@@ -181,10 +181,30 @@ def _generate_answer(settings, question: str, trace, top_k: int, model: str) -> 
     print()
 
 
-def _ask(retriever, question: str, top_k: int, stage_k: int, full: bool,
-         llm_model: "str | None" = None, settings=None) -> None:
+def _resolve_lang(choice: str, question: str) -> str:
+    """Resolve the ``--lang`` choice to a concrete en|hi|es code.
+
+    ``auto`` runs the same offline lingua detector used by /api/ask on the
+    question and falls back to ``en`` when the text is unsupported/low-confidence.
+    """
+    from app import i18n
+
+    if choice != "auto":
+        return choice
     try:
-        trace = retriever.retrieve_trace(question, top_k)
+        from app.language.detector import LinguaLanguageDetector
+
+        det = LinguaLanguageDetector().detect(question)
+        return det.code if det.is_supported else i18n.DEFAULT
+    except Exception:
+        return i18n.DEFAULT
+
+
+def _ask(retriever, question: str, top_k: int, stage_k: int, full: bool,
+         llm_model: "str | None" = None, settings=None, lang: str = "auto") -> None:
+    resolved_lang = _resolve_lang(lang, question)
+    try:
+        trace = retriever.retrieve_trace(question, top_k, resolved_lang)
     except Exception as exc:
         print(f"Error: retrieval failed: {_scrub(str(exc))}", file=sys.stderr)
         return
@@ -227,6 +247,8 @@ def main() -> int:
                         help="skip the LLM call and show retrieval output only")
     parser.add_argument("--model", default=None,
                         help="OpenAI chat model for the answer (default: OPENAI_CHAT_MODEL from settings)")
+    parser.add_argument("--lang", choices=("en", "hi", "es", "auto"), default="auto",
+                        help="retrieval language; 'auto' detects it from the question (default auto)")
     args = parser.parse_args()
 
     for stream in (sys.stdout, sys.stderr):  # chunk text may hold characters the console can't encode
@@ -240,7 +262,7 @@ def main() -> int:
     llm_model = None if args.no_llm else (args.model or settings.openai_chat_model)
 
     if args.question:
-        _ask(retriever, " ".join(args.question), top_k, stage_k, args.full, llm_model, settings)
+        _ask(retriever, " ".join(args.question), top_k, stage_k, args.full, llm_model, settings, args.lang)
         return 0
 
     print("Ask a question (empty line, 'exit' or 'quit' to leave).")
@@ -252,7 +274,7 @@ def main() -> int:
             break
         if question.lower() in EXIT_WORDS:
             break
-        _ask(retriever, question, top_k, stage_k, args.full, llm_model, settings)
+        _ask(retriever, question, top_k, stage_k, args.full, llm_model, settings, args.lang)
     return 0
 
 

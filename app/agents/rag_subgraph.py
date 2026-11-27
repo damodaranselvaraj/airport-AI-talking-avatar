@@ -34,9 +34,10 @@ def make_retrieve_node(runner: TimeoutRunner, search_tool: BaseTool) -> Callable
 
     def retrieve_node(state: AgentState) -> dict:
         """Graph node: call the ``search_airport`` tool and rebuild typed passages from its dicts."""
-        query = state["request"].text
+        req = state["request"]
+        # ``req.language`` is the already-resolved governing language (set by /api/ask); no detection here.
         # ``.invoke`` goes through the tool's schema validation, exactly as an LLM tool call would.
-        found = runner.run(search_tool.invoke, {"query": query})
+        found = runner.run(search_tool.invoke, {"query": req.text, "language": req.language})
         passages = [RetrievedPassage(**item) for item in found["passages"]]
         return {
             "passages": passages,

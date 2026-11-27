@@ -69,7 +69,8 @@ def test_load_phrases_reads_the_real_responses_file_in_priority_order():
         "guardrail.PROMPT_INJECTION",
         "guardrail.JAILBREAK",
     }
-    assert len(phrases) == 19
+    assert "unsupported_language" in names
+    assert len(phrases) == 20
 
 
 def test_duplicate_texts_are_listed_once_and_counted_once(tmp_path, concierge):
@@ -82,7 +83,7 @@ def test_duplicate_texts_are_listed_once_and_counted_once(tmp_path, concierge):
 
 def test_the_real_catalog_has_one_fewer_distinct_text_than_names(tmp_path, concierge):
     cache = make_cache(tmp_path, concierge, phrases=load_phrases(ROOT / "config" / "responses.json", "en"))
-    assert cache.total() == 18          # PROMPT_INJECTION and JAILBREAK share their wording
+    assert cache.total() == 19          # PROMPT_INJECTION and JAILBREAK share their wording; +unsupported_language
 
 
 # ---------------------------------------------------------------- cache keys
@@ -156,6 +157,102 @@ def test_startup_purge_keeps_current_default_clips_and_drops_the_rest(tmp_path, 
     assert sorted(p.name for p in good.parent.iterdir()) == [good.name]
     assert not (tmp_path / "clips" / "faces").exists() and not old_default.exists()
     assert not (cache.wav_path("x").parent / ("e" * 16 + ".wav")).exists()
+
+
+# --------------------------------------------------- per-language caches ----
+def test_load_phrases_reads_hi_and_es_blocks():
+    hi = load_phrases(ROOT / "config" / "responses.json", "hi")
+    es = load_phrases(ROOT / "config" / "responses.json", "es")
+    for phrases in (hi, es):
+        assert "greeting" in phrases and "unsupported_language" in phrases
+        assert "error" not in phrases
+    assert "नमस्ते" in hi["greeting"]
+    assert "Hola" in es["greeting"]
+
+
+def make_lang_caches(tmp_path, concierge) -> dict[str, ClipCache]:
+    """One cache per language sharing cache/clips, each told the others' hashes to keep."""
+    digest = file_digest(concierge)
+    responses = ROOT / "config" / "responses.json"
+    from app import i18n
+
+    phrases = {lang: load_phrases(responses, lang) for lang in ("en", "hi", "es")}
+    all_hashes: dict[str, set[str]] = {}
+    tmp = {
+        lang: ClipCache(tmp_path / "clips", phrases[lang], voice=i18n.kokoro_voice_for(lang),
+                        language=lang, default_digest=digest)
+        for lang in ("en", "hi", "es")
+    }
+    for lang, cache in tmp.items():
+        all_hashes[lang] = {cache.phrase_hash(t) for t in phrases[lang].values()}
+    caches: dict[str, ClipCache] = {}
+    for lang in ("en", "hi", "es"):
+        extra = set().union(*(h for other, h in all_hashes.items() if other != lang))
+        caches[lang] = ClipCache(
+            tmp_path / "clips", phrases[lang], voice=i18n.kokoro_voice_for(lang),
+            language=lang, default_digest=digest, extra_keep=extra,
+        )
+    return caches
+
+
+def test_each_language_cache_tracks_its_own_phrases(tmp_path, concierge):
+    caches = make_lang_caches(tmp_path, concierge)
+    face = default_face(concierge)
+    for lang, cache in caches.items():
+        assert cache.total() > 0
+        assert len(cache.missing(face)) == cache.total()     # no clips rendered yet
+    # The three languages' hashes are disjoint (salted by language).
+    hashes = {lang: {c.phrase_hash(t) for t in c._phrases.values()} for lang, c in caches.items()}
+    assert hashes["en"].isdisjoint(hashes["hi"]) and hashes["en"].isdisjoint(hashes["es"])
+
+
+def test_purge_keeps_other_languages_files(tmp_path, concierge):
+    caches = make_lang_caches(tmp_path, concierge)
+    face = default_face(concierge)
+    # Lay down a finished clip + wav for each language.
+    for cache in caches.values():
+        text = cache.ordered_phrases()[0][1]
+        clip = cache.clip_path(face, text)
+        clip.parent.mkdir(parents=True, exist_ok=True)
+        clip.write_bytes(b"mp4")
+        cache.wav_path(text).write_bytes(b"wav")
+    # Re-construct the en cache (its __init__ purges) WITH the union keep-set.
+    from app import i18n
+    ClipCache(
+        tmp_path / "clips", load_phrases(ROOT / "config" / "responses.json", "en"),
+        voice=i18n.kokoro_voice_for("en"), language="en", default_digest=file_digest(concierge),
+        extra_keep={caches["hi"].phrase_hash(caches["hi"].ordered_phrases()[0][1]),
+                    caches["es"].phrase_hash(caches["es"].ordered_phrases()[0][1])}
+        | {caches["hi"].phrase_hash(t) for t in caches["hi"]._phrases.values()}
+        | {caches["es"].phrase_hash(t) for t in caches["es"]._phrases.values()},
+    )
+    for lang in ("hi", "es"):
+        text = caches[lang].ordered_phrases()[0][1]
+        assert caches[lang].clip_path(face, text).exists(), f"{lang} clip was purged"
+        assert caches[lang].wav_path(text).exists(), f"{lang} wav was purged"
+
+
+def test_clips_status_aggregates_across_languages_warming_to_ready(build_services, concierge, tmp_path):
+    from app.services import Services
+
+    caches = make_lang_caches(tmp_path, concierge)
+    avatar, synth = FakeAvatar(auto=False), FakeSynthesizer()
+    renderers = {lang: ClipRenderer(cache, avatar, synth) for lang, cache in caches.items()}
+    svc = build_services(
+        avatar=avatar, default_face=concierge, synthesizer=synth,
+        clips=caches, clip_renderer=renderers,
+    )
+    total = sum(c.total() for c in caches.values())
+    for r in renderers.values():
+        r.schedule(default_face(concierge))
+    wait_for_renders(avatar, total)
+    status = svc.clips_status()
+    assert status == {"state": "warming", "done": 0, "total": total}
+    for job in list(avatar._pending):
+        avatar.complete(job)
+    for r in renderers.values():
+        assert r.wait_idle(10)
+    assert svc.clips_status() == {"state": "ready", "done": total, "total": total}
 
 
 # ------------------------------------------------------------------ renderer
@@ -267,7 +364,11 @@ def build_http(build_services, concierge, tmp_path, avatar=None):
     cache = make_cache(tmp_path, concierge, phrases=REAL_PHRASES)
     avatar, synth = avatar or FakeAvatar(), FakeSynthesizer()
     renderer = ClipRenderer(cache, avatar, synth)
-    svc = build_services(avatar=avatar, default_face=concierge, synthesizer=synth, clips=cache, clip_renderer=renderer)
+    # Services holds per-language dicts of caches/renderers; the kiosk defaults to "en".
+    svc = build_services(
+        avatar=avatar, default_face=concierge, synthesizer=synth,
+        clips={"en": cache}, clip_renderer={"en": renderer},
+    )
     return svc, avatar, synth, cache, renderer
 
 
@@ -329,11 +430,14 @@ def test_a_cached_phrase_is_served_at_once_without_rendering(http, concierge):
     assert synth.texts == []                                 # Kokoro was not run again either
 
 
-def test_a_fixed_phrase_without_a_clip_renders_live_and_a_missing_wav_is_synthesised(http):
+def test_a_greeting_without_a_clip_is_audio_only_and_a_missing_wav_is_synthesised(http):
+    # Design T8: a greeting with no pre-rendered clip never runs live inference; it
+    # reveals text and voice without video (greeting_clip_missing), as a safety net.
     client, _, avatar, synth, *_ = http
     body = ask_text(client, "Hello")
-    assert wait(client, body["video_url"]).status_code == 200
-    assert [r["priority"] for r in avatar.renders] == [Priority.LIVE]
+    assert body["video_url"] is None
+    assert avatar.renders == []
+    assert wait(client, body["audio_url"]).status_code == 200
     assert synth.texts == [GREETING]
 
 
@@ -416,13 +520,16 @@ def test_a_guardrail_block_without_a_photo_is_spoken_too(http):
     assert synth.texts == [REAL_PHRASES["guardrail.PROMPT_INJECTION"]]
 
 
-def test_with_a_photo_a_fixed_phrase_without_a_clip_renders_live_with_the_concierge(http, concierge):
+def test_with_a_photo_a_greeting_without_a_clip_is_still_audio_only(http, concierge):
+    # Even with a traveler photo, a greeting is a fixed phrase: it uses the concierge, and
+    # with no cached clip it stays audio-only (greeting_clip_missing) per design T8 — the
+    # traveler's photo is only ever animated live for a grounded answer.
     client, svc, avatar, *_ = http
     upload(client)
     body = ask_text(client, "Hello")
-    assert wait(client, body["video_url"]).status_code == 200
-    (job,) = avatar.renders
-    assert job["priority"] is Priority.LIVE and job["face_key"] == DEFAULT_FACE_KEY and job["source"] == concierge
+    assert body["video_url"] is None
+    assert avatar.renders == []
+    assert wait(client, body["audio_url"]).status_code == 200
 
 
 def test_the_photo_goes_back_to_work_for_the_next_grounded_answer(http, concierge):
@@ -463,7 +570,7 @@ def test_status_is_unavailable_without_clips(client):
 def test_status_goes_from_warming_to_ready(build_services, concierge, tmp_path):
     svc, avatar, synth, cache, renderer = build_http(build_services, concierge, tmp_path, avatar=FakeAvatar(auto=False))
     total = cache.total()
-    assert total == 18
+    assert total == 19
     with TestClient(create_app(svc)) as client:
         renderer.schedule(default_face(concierge))
         wait_for_renders(avatar, total)
@@ -498,9 +605,12 @@ def test_status_is_degraded_when_prerender_never_started(http):
     assert client.get("/api/clips/status").json()["state"] == "degraded"   # missing clips, nothing rendering
 
 
-def test_a_degraded_kiosk_still_answers_fixed_phrases_live_with_the_concierge(http, concierge):
+def test_a_degraded_kiosk_still_speaks_a_greeting_audio_only(http, concierge):
+    # Degraded (missing clips, nothing rendering): a greeting still speaks, but audio-only
+    # without live video (greeting_clip_missing), the unchanged design-T8 safety net.
     client, svc, avatar, *_ = http
     assert client.get("/api/clips/status").json()["state"] == "degraded"
     body = ask_text(client, "Hello")
-    assert wait(client, body["video_url"]).status_code == 200
-    assert avatar.renders[-1]["face_key"] == DEFAULT_FACE_KEY
+    assert body["video_url"] is None
+    assert avatar.renders == []
+    assert wait(client, body["audio_url"]).status_code == 200

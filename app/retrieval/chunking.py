@@ -6,6 +6,7 @@ from hashlib import sha256
 from langchain_text_splitters import MarkdownHeaderTextSplitter, RecursiveCharacterTextSplitter
 from pydantic import BaseModel, Field
 
+from app import i18n
 from app.retrieval.parsing import ParsedDocument
 
 _HEADER_LEVELS = (("#", "h1"), ("##", "h2"), ("###", "h3"))
@@ -84,6 +85,15 @@ class Chunker:
                         "order": str(order),
                     }
                 )
+                # `lang` is an authoritative, validated invariant of every stored
+                # chunk: a mislabeled doc must never be ingested into the wrong
+                # language partition, so fail loudly naming the source file.
+                lang = metadata.get("lang")
+                if lang not in i18n.SUPPORTED:
+                    raise ValueError(
+                        f"Chunk from {doc.source!r} has missing/unsupported lang "
+                        f"{lang!r}; supported: {i18n.SUPPORTED}"
+                    )
                 chunks.append(
                     Chunk(
                         chunk_id=make_chunk_id(doc.source, heading_path, order, text),

@@ -5,10 +5,21 @@ import os
 import pickle
 import re
 from pathlib import Path
+from typing import Iterable
 
 from rank_bm25 import BM25Okapi
 
 _TOKEN_RE = re.compile(r"\w+")
+
+
+def bm25_path_for(base_path: str, lang: str) -> str:
+    """Per-language BM25 file path: insert ``.{lang}`` before the final suffix.
+
+    e.g. ``bm25_path_for('.bm25/knowledge_base.pkl', 'hi')`` ->
+    ``.bm25/knowledge_base.hi.pkl``.
+    """
+    base = Path(base_path)
+    return str(base.with_name(f"{base.stem}.{lang}{base.suffix}"))
 
 
 def tokenize(text: str) -> list[str]:
@@ -65,3 +76,34 @@ class Bm25Index:
         scores = self._bm25.get_scores(tokens)
         order = sorted(range(len(scores)), key=lambda i: (-scores[i], i))[:top_k]
         return [(self._chunk_ids[i], float(scores[i])) for i in order]
+
+
+class Bm25Registry:
+    """One ``Bm25Index`` per language, selected by language code.
+
+    BM25 is a single in-memory corpus and cannot be filtered, so language
+    isolation is achieved by holding a separate index per language and selecting
+    by ``lang`` at query time.
+    """
+
+    def __init__(self, indexes: dict[str, Bm25Index]) -> None:
+        self._indexes = dict(indexes)
+
+    @classmethod
+    def load(cls, base_path: str, languages: Iterable[str]) -> "Bm25Registry":
+        """Load one pickle per language via ``bm25_path_for``.
+
+        A missing per-language file raises (startup validates every partition).
+        """
+        indexes = {
+            lang: Bm25Index.load(bm25_path_for(base_path, lang)) for lang in languages
+        }
+        return cls(indexes)
+
+    def get(self, lang: str) -> Bm25Index:
+        """The index for ``lang``; a KeyError here means a wiring/config bug."""
+        return self._indexes[lang]
+
+    def chunk_ids(self, lang: str) -> frozenset[str]:
+        """The set of indexed chunk IDs for ``lang``."""
+        return self._indexes[lang].chunk_ids

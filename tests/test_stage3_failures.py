@@ -42,25 +42,20 @@ def concierge(tmp_path):
     return path
 
 
-def test_deleting_the_photo_while_its_render_is_queued_cancels_the_video(build_services, concierge):
-    # A real queue whose dispatcher never runs, so the render stays queued.
+def test_with_the_worker_not_ready_a_grounded_answer_is_text_and_voice_only(build_services, concierge):
+    # A real queue whose worker was never started, so avatar.ready is False. Per the
+    # unchanged design-T8 worker_not_ready safety net, the turn degrades to text + voice
+    # with no video (video_url is None); deleting the photo still removes it from disk.
     avatar = AvatarService(DittoWorker([sys.executable, str(STUB)]), AvatarQueue())
     svc = build_services(avatar=avatar, default_face=concierge)
     ref = svc.faces.stage(png())
     svc.faces.activate(SESSION, ref)
     with TestClient(create_app(svc)) as client:
         body = client.post("/api/ask", json={"session_id": SESSION, "text": "Where is gate C22?"}).json()
-        for _ in range(100):                               # Kokoro (fake) finishes, the job is queued
-            if len(avatar._queue) == 1:
-                break
-            time.sleep(0.02)
-        assert client.get(body["video_url"]).status_code == 202
+        assert body["video_url"] is None                   # worker not ready -> audio-only, nothing queued
+        assert wait(client, body["audio_url"]).status_code == 200
 
         client.request("DELETE", "/api/face", json={"session_id": SESSION})
-
-        r = wait(client, body["video_url"])
-        assert r.status_code == 410                       # cancelled with the photo -> text + voice fallback
-        assert wait(client, body["audio_url"]).status_code == 200
         assert not ref.path.exists()
 
 
@@ -72,24 +67,37 @@ def test_worker_that_cannot_start_means_text_and_voice_only(build_services, conc
     with TestClient(create_app(svc)) as client:
         assert client.get("/health").json()["components"]["avatar"] is False
         body = client.post("/api/ask", json={"session_id": SESSION, "text": "Hello"}).json()
-        assert body["text"] and body["video_url"]
-        assert wait(client, body["video_url"], timeout=20).status_code == 410
+        # Greeting with no pre-rendered clip + a worker that cannot start: text + voice only,
+        # no video (greeting_clip_missing), the unchanged design-T8 safety net.
+        assert body["text"] and body["video_url"] is None
         assert wait(client, body["audio_url"]).status_code == 200
 
 
 def test_worker_crash_mid_turn_degrades_then_a_later_turn_recovers(build_services, concierge, tmp_path, monkeypatch):
+    # Uses a grounded answer: unlike a greeting (always audio-only per design T8), a grounded
+    # answer renders live with a ready worker, so this exercises the worker crash -> recover path.
     monkeypatch.setenv("STUB_CRASH_MARKER", str(tmp_path / "crashed"))
     avatar = AvatarService(DittoWorker([sys.executable, str(STUB)]), AvatarQueue())
     assert avatar.start(wait_seconds=20)
     svc = build_services(avatar=avatar, default_face=concierge)
     with TestClient(create_app(svc)) as client:
-        first = client.post("/api/ask", json={"session_id": SESSION, "text": "Hello"}).json()
+        first = client.post("/api/ask", json={"session_id": SESSION, "text": "Where is gate C22?"}).json()
         assert wait(client, first["video_url"], timeout=20).status_code == 410   # the worker died on it
         assert wait(client, first["audio_url"]).status_code == 200               # the voice still works
-        time.sleep(1.3)                                                          # restart backoff
-        second = client.post("/api/ask", json={"session_id": SESSION, "text": "Hello"}).json()
-        r = wait(client, second["video_url"], timeout=40)
-        assert r.status_code == 200 and r.content[:12] == b"\x00\x00\x00\x18ftypmp42"
+        # A worker_not_ready turn kicks off a restart (lazily, per the design-T8 safety net), then
+        # audio-only until it is back up. Keep asking until a later turn renders a video again.
+        deadline = time.time() + 40
+        video = None
+        while time.time() < deadline:
+            time.sleep(1.3)                                                      # restart backoff
+            later = client.post("/api/ask", json={"session_id": SESSION, "text": "Where is gate C22?"}).json()
+            if later["video_url"] is None:                                       # worker still not ready
+                continue
+            r = wait(client, later["video_url"], timeout=40)
+            if r.status_code == 200:
+                video = r
+                break
+        assert video is not None and video.content[:12] == b"\x00\x00\x00\x18ftypmp42"
 
 
 def test_queue_full_still_returns_the_answer_and_voice(build_services, concierge):

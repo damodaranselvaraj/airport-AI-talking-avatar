@@ -7,7 +7,8 @@ and source metadata are authored once by the ``Chunker`` and passed unchanged to
 from __future__ import annotations
 
 import logging
-from collections import Counter
+from collections import Counter, defaultdict
+from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel
@@ -16,7 +17,7 @@ from app.retrieval.chunking import Chunk, Chunker
 from app.retrieval.embedding import DenseEmbedder
 from app.retrieval.manifest import ManifestValidator
 from app.retrieval.parsing import MarkdownParser
-from app.retrieval.sparse import Bm25Index
+from app.retrieval.sparse import Bm25Index, bm25_path_for
 from app.retrieval.store import ChromaStore
 from config.settings import Settings
 
@@ -40,8 +41,9 @@ class IngestionReport(BaseModel):
     written: int  # chunks upserted into both indexes
     documents: int = 0  # eligible documents parsed
     chroma_count: int = 0  # chunk IDs in Chroma on completion
-    bm25_count: int = 0  # chunk IDs in the persisted BM25 index on completion
-    parity_ok: bool = True  # Chroma ID set == BM25 ID set
+    bm25_count: int = 0  # chunk IDs across all persisted per-language BM25 indexes
+    parity_ok: bool = True  # all per-language parities hold
+    parity_by_lang: dict[str, bool] = {}  # per-language: Chroma(lang) ids == BM25(lang) ids
     chroma_only: int = 0  # IDs present only in Chroma
     bm25_only: int = 0  # IDs present only in BM25
     pruned: int = 0  # stale Chroma IDs (not in the current manifest scope) deleted
@@ -91,6 +93,28 @@ def _plan_chunks(
         documents += 1
         chunks.extend(doc_chunks)
     return chunks, documents
+
+
+def _snapshot_bm25_files(base_path: str, languages: list[str]) -> dict[str, Optional[bytes]]:
+    """Capture each per-language BM25 file's bytes before a write (None if absent)."""
+    snapshot: dict[str, Optional[bytes]] = {}
+    for lang in languages:
+        path = Path(bm25_path_for(base_path, lang))
+        snapshot[lang] = path.read_bytes() if path.is_file() else None
+    return snapshot
+
+
+def _restore_bm25_files(
+    base_path: str, snapshot: dict[str, Optional[bytes]]
+) -> None:
+    """Restore every per-language BM25 file to its pre-run bytes (or remove if absent)."""
+    for lang, data in snapshot.items():
+        path = Path(bm25_path_for(base_path, lang))
+        if data is None:
+            path.unlink(missing_ok=True)
+        else:
+            path.parent.mkdir(parents=True, exist_ok=True)
+            path.write_bytes(data)
 
 
 def _restore_chroma(
@@ -169,20 +193,34 @@ def run_ingestion(
         [i for i in ids if i in before_ids] + stale_ids
     )
 
-    # Chroma first; BM25 is persisted (temp file + atomic replace) only after
-    # Chroma succeeded, so a BM25 failure never leaves a half-written index file.
+    # One BM25 index per supported language; a language with zero chunks still gets
+    # an empty index file so the registry/startup never hits a missing file.
+    languages = list(settings.supported_languages)
+    by_lang: dict[str, list[Chunk]] = defaultdict(list)
+    for chunk in chunks:
+        by_lang[chunk.metadata["lang"]].append(chunk)
+
+    # Snapshot every per-language BM25 file BEFORE writing so a failure on any one
+    # language restores all of them to their pre-run bytes.
+    bm25_snapshot = _snapshot_bm25_files(settings.bm25_index_path, languages)
+
+    # Chroma first; each per-language BM25 is persisted (temp file + atomic replace)
+    # only after Chroma succeeded, so a BM25 failure never leaves a half-written file.
     try:
         store.upsert(ids=ids, texts=texts, embeddings=vectors, metadatas=metadatas)
         store.delete(stale_ids)  # prune: Chroma ID set becomes exactly the current chunk set
-        bm25 = Bm25Index()
-        bm25.build(ids, texts)
-        bm25.persist(settings.bm25_index_path)
+        for lang in languages:
+            lang_chunks = by_lang.get(lang, [])
+            bm25 = Bm25Index()
+            bm25.build([c.chunk_id for c in lang_chunks], [c.text for c in lang_chunks])
+            bm25.persist(bm25_path_for(settings.bm25_index_path, lang))
     except Exception as exc:
         try:
             _restore_chroma(store, before_ids, previous, ids)
+            _restore_bm25_files(settings.bm25_index_path, bm25_snapshot)
         except Exception as rollback_exc:
             raise IngestionRollbackError(
-                f"Ingestion failed ({exc!r}) and Chroma rollback failed ({rollback_exc!r}); "
+                f"Ingestion failed ({exc!r}) and rollback failed ({rollback_exc!r}); "
                 "re-run ingestion to rebuild both indexes"
             ) from exc
         raise IngestionAbortedError(
@@ -193,7 +231,15 @@ def run_ingestion(
     # surface as a raw exception: report parity as failed with the reason instead.
     try:
         chroma_ids = store.ids()
-        bm25_ids = Bm25Index.load(settings.bm25_index_path).chunk_ids
+        parity_by_lang: dict[str, bool] = {}
+        bm25_total = 0
+        for lang in languages:
+            chroma_lang_ids = store.ids(where={"lang": lang})
+            bm25_lang_ids = Bm25Index.load(
+                bm25_path_for(settings.bm25_index_path, lang)
+            ).chunk_ids
+            bm25_total += len(bm25_lang_ids)
+            parity_by_lang[lang] = chroma_lang_ids == bm25_lang_ids
     except Exception as exc:
         return IngestionReport(
             planned=len(chunks),
@@ -208,9 +254,8 @@ def run_ingestion(
         written=len(chunks),
         documents=documents,
         chroma_count=len(chroma_ids),
-        bm25_count=len(bm25_ids),
-        parity_ok=chroma_ids == bm25_ids,
-        chroma_only=len(chroma_ids - bm25_ids),
-        bm25_only=len(bm25_ids - chroma_ids),
+        bm25_count=bm25_total,
+        parity_ok=all(parity_by_lang.values()),
+        parity_by_lang=parity_by_lang,
         pruned=len(stale_ids),
     )

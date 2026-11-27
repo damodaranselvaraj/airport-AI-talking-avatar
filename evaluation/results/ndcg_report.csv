@@ -1,0 +1,20 @@
+index,question,n_contexts,gains,ndcg@1,ndcg@3,ndcg@5
+0,"What are the key details regarding Concourse C at the airport, particularly in relation to Gate C22?",1,[1.0],1.0,1.0,1.0
+1,Whaer is the gate for Sahara Jet at DIA?,1,[1.0],1.0,1.0,1.0
+2,What last call time for flights at DIA?,1,[1.0],1.0,1.0,1.0
+3,"What should passengers expect when boarding from gate B28 at Dam International Airport, and how should they prepare for the boarding process?",1,[1.0],1.0,1.0,1.0
+4,Wut flights are at gate B29?,1,[1.0],1.0,1.0,1.0
+5,What about B30 gate for boarding?,1,[1.0],1.0,1.0,1.0
+6,"What airlines operate in Terminal 2 at Dam International Airport, specifically including Horizon Air?",1,[1.0],1.0,1.0,1.0
+7,What is the layout and function of the terminals at Dam International Airport?,1,[1.0],1.0,1.0,1.0
+8,Which terminal at Dam International Airport does Sahara Jet operate from?,1,[1.0],1.0,1.0,1.0
+9,"What steps should a traveler take to verify flight information at the airline desk and ensure timely boarding at Gate C22, considering the last call policy and potential bus boarding at other gates?",2,"[1.0, 1.0]",1.0,1.0,1.0
+10,"What is the concourse information for boarding by bus at the airport, and how does it relate to the nearest gates and their respective amenities?",2,"[1.0, 1.0]",1.0,1.0,1.0
+11,"What concourse information should I know about boarding by bus at the airport, specifically regarding gates B28, B29, B30, and D16, D17, D18?",2,"[1.0, 1.0]",1.0,1.0,1.0
+12,"How much extra time should a traveler allow when boarding from bus gates B28, B29, B30, and D16, D17, D18 compared to the regular travel time from security to gate C22?",2,"[1.0, 1.0]",1.0,1.0,1.0
+13,How can I verify flight information at the airline desk and what should I consider regarding last call and bus boarding gates?,2,"[1.0, 1.0]",1.0,1.0,1.0
+14,What are the check-in procedures and gate information for Cedar Pacific at Dam International Airport?,2,"[1.0, 1.0]",1.0,1.0,1.0
+15,Wht terminal is Cedar Pacific in and how long does it take to get to gate C22?,2,"[1.0, 1.0]",1.0,1.0,1.0
+16,"What terminal does Sandpiper operate from at Dam International Airport, and what are the gate details associated with it?",2,"[1.0, 1.0]",1.0,1.0,1.0
+17,What gates does Pearl Wings use at Dam International Airport and how long does it take to walk from T1 to those gates?,2,"[1.0, 1.0]",1.0,1.0,1.0
+18,Wht are the check-in and boarding procedures for Sahara Jet at Dam International Airport?,2,"[1.0, 1.0]",1.0,1.0,1.0

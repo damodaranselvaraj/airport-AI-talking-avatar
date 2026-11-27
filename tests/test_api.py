@@ -4,10 +4,40 @@ import time
 import pytest
 
 from app.speech_to_text.errors import NoSpeechError, UndecodableAudioError
+from app.workflow.contracts import (
+    AnswerResult,
+    KioskRequest,
+    ResponseStatus,
+    TurnOutcome,
+    TurnTrace,
+)
 from tests.conftest import SECRETS
-from tests.fakes import FakeSynthesizer, FakeTranscriber
+from tests.fakes import FakeDetector, FakeSynthesizer, FakeTranscriber
 
 SESSION = "kiosk-session-0001"
+
+
+class SpyWorkflow:
+    """Records the KioskRequest it receives and returns a canned, spoken answer."""
+
+    evidence_calibrated = True
+
+    def __init__(self) -> None:
+        self.requests: list[KioskRequest] = []
+
+    def run(self, request: KioskRequest) -> TurnOutcome:
+        self.requests.append(request)
+        return TurnOutcome(
+            result=AnswerResult(
+                session_id=request.session_id,
+                status=ResponseStatus.ANSWERED,
+                text="Gate C22 is in Terminal 2.",
+                citations=[],
+                language=request.language,
+                spoken=True,
+            ),
+            trace=TurnTrace(session_id=request.session_id),
+        )
 
 
 def ask(client, text, **extra):
@@ -83,6 +113,52 @@ def test_error_status_is_text_only_with_no_audio(build_services):
     with TestClient(create_app(svc)) as c:
         body = ask(c, "Where is gate C22?").json()
     assert body["status"] == "error" and body["spoken"] is False and body["audio_url"] is None
+
+
+# ----------------------------------------------- FEAT-005: language detection
+def test_unsupported_language_is_refused_without_workflow_or_retrieval(build_services):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    spy = SpyWorkflow()
+    svc = build_services(workflow=spy, detector=FakeDetector(code="en", is_supported=False))
+    with TestClient(create_app(svc)) as c:
+        body = ask(c, "bonjour, ou est la porte?").json()
+    assert body["status"] == "refused"
+    assert body["language"] == "en"
+    assert body["citations"] == []
+    assert spy.requests == []                 # workflow never invoked
+    assert svc.retriever.calls == []          # retrieval never touched
+
+
+def test_detected_language_overrides_body_language(build_services):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    spy = SpyWorkflow()
+    svc = build_services(workflow=spy, detector=FakeDetector(code="hi", is_supported=True))
+    with TestClient(create_app(svc)) as c:
+        # body.language says 'en' but the detector says 'hi': the detected code wins.
+        body = ask(c, "गेट C22 कहाँ है?", language="en").json()
+    assert body["status"] == "answered"
+    assert body["language"] == "hi"
+    assert len(spy.requests) == 1
+    assert spy.requests[0].language == "hi"   # KioskRequest carries the detected code
+
+
+def test_supported_english_turn_runs_the_workflow(build_services):
+    from fastapi.testclient import TestClient
+
+    from app.main import create_app
+
+    spy = SpyWorkflow()
+    svc = build_services(workflow=spy, detector=FakeDetector(code="en", is_supported=True))
+    with TestClient(create_app(svc)) as c:
+        body = ask(c, "Where is gate C22?").json()
+    assert body["status"] == "answered"
+    assert spy.requests[0].language == "en"
 
 
 # ---------------------------------------------------------------- audio

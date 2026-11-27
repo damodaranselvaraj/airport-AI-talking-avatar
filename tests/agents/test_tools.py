@@ -46,3 +46,24 @@ def test_bound_tool_does_not_touch_module_state():
 def test_tool_has_name_and_description_for_llm_binding():
     assert search_airport.name == "search_airport"
     assert "airport" in search_airport.description.lower()
+
+
+def test_bound_tool_threads_language_to_the_retriever():
+    retriever = FakeRetriever([GATE_C22])
+    tool = make_search_tool(AirportSearch(retriever, top_k=5))
+    tool.invoke({"query": "गेट सी22 कहाँ है?", "language": "hi"})
+    assert retriever.languages == ["hi"]
+
+
+def test_module_tool_threads_language_to_the_retriever():
+    retriever = FakeRetriever([GATE_C22])
+    configure_search(AirportSearch(retriever, top_k=5))
+    search_airport.invoke({"query": "¿dónde está la puerta?", "language": "es"})
+    assert retriever.languages == ["es"]
+
+
+def test_tool_language_defaults_to_en():
+    retriever = FakeRetriever([GATE_C22])
+    tool = make_search_tool(AirportSearch(retriever, top_k=5))
+    tool.invoke({"query": "where is gate C22"})
+    assert retriever.languages == ["en"]

@@ -21,8 +21,9 @@ support.
 | Take or upload a photo (with consent) | That face becomes the avatar for the session; the default concierge is one click away |
 | See the citation | The source document name is shown under the answer |
 
-Language: **English for v1**, architected so a second language (e.g. Hindi or
-Spanish) drops in without a code change.
+Languages: **English, Hindi and Spanish**. The language of a turn is detected
+automatically and the whole flow stays in that language (see
+[Languages (EN/HI/ES)](#languages-enhies)).
 
 ## Architecture
 
@@ -134,6 +135,51 @@ text-only message.
    If the video finishes later, the page offers it with the **Play answer** button.
 
 Each turn is stateless: nothing is remembered between questions.
+
+## Languages (EN/HI/ES)
+
+The kiosk serves **English, Hindi and Spanish** with strict per-language
+isolation and no translation anywhere: a Hindi question is answered from Hindi
+documents in Hindi, and the same for each language.
+
+- **Automatic detection, no selector.** Spoken input uses the multilingual
+  Whisper `small` model, which auto-detects the language and transcribes in the
+  native script (Hindi in Devanagari, Spanish in Spanish). Typed input is run
+  through the offline [lingua](https://github.com/pemistahl/lingua-py) detector.
+  The governing language of a turn is decided once, server-side, from the final
+  text in the box at `/api/ask` time, and everything downstream — retrieval
+  filter, answer language, voice, and clip cache — keys off that single value.
+- **Strict isolation.** Retrieval is scoped to the detected language: Chroma is
+  read with a `where={"lang": ...}` filter and there is one BM25 index per
+  language. A Hindi turn can only ever see Hindi passages, so no English content
+  leaks into a Hindi answer. Topics missing in a language (e.g. a Hindi question
+  with no Hindi evidence) correctly fall back to the safe "can't confirm"
+  response rather than answering from another language.
+- **Polite refusal for anything else.** If the detected language is not one of
+  the three supported ones, the kiosk does not retrieve or run the workflow; it
+  returns a short refusal spoken in English: *"I can help in English, Hindi, or
+  Spanish."* (`unsupported_language`).
+- **Per-language voices and pre-rendered clips.** Kokoro speaks each language
+  with its own voice (`af_heart` / `hf_alpha` / `ef_dora`), and the fixed phrases
+  (greeting, refusals, fallback, guardrail messages) are pre-rendered as avatar
+  clips for all three languages at startup. This makes the **first startup about
+  3× longer** (a one-time cost); the kiosk shows "warming up" until every
+  language's clips are ready.
+- **espeak-ng host prerequisite (Hindi AND Spanish).** Kokoro's G2P for both
+  Hindi (`lang_code h`) and Spanish (`lang_code e`) routes through
+  `misaki.espeak.EspeakG2P`, which needs the OS package **espeak-ng** installed
+  on the host (`apt-get install espeak-ng` on Linux, or the Windows installer).
+  It is never installed by the app; if it is missing, Kokoro fails loudly at
+  startup when warming the Hindi/Spanish pipelines. English does not need it.
+- **Ingestion is per-language.** `scripts/run_ingestion_pipeline.py` stamps each
+  chunk with its document's `lang` and writes **one BM25 index per language**
+  (`.bm25/knowledge_base.en.pkl`, `.hi.pkl`, `.es.pkl`) alongside the single
+  Chroma collection. Startup validation then checks every language's partition
+  is non-empty and that its BM25 index matches Chroma exactly.
+
+Source documents live under `data/en/`, `data/hi/` and `data/es/`, each with a
+`lang` code in its frontmatter; `data/manifest.json` lists which documents to
+ingest per language.
 
 ## Tech stack
 
@@ -269,9 +315,11 @@ anything. `python -m app.retrieval.ingest` is an equivalent entry point.
 python -m uvicorn app.main:app --host 127.0.0.1 --port 8000
 ```
 
-Wait for `Application startup complete.` The first start downloads the Whisper
-`small.en` model (~460 MB) and, if absent, Kokoro's spaCy model, so it can take
-several minutes. Later starts take about 30-40 s while both speech models load.
+Wait for `Application startup complete.` The first start downloads the
+multilingual Whisper `small` model (~460 MB) and, if absent, Kokoro's spaCy
+model, and pre-renders the fixed-phrase clips for all three languages (so the
+first start is about 3× longer — a one-time cost), so it can take several
+minutes. Later starts take about 30-40 s while both speech models load.
 Leave this window open; stop the server with `Ctrl+C`. Do not add `--reload`
 (every code edit would reload the speech models).
 
@@ -432,7 +480,16 @@ python ask.py -k 3 "question"
 
 # Use a different OpenAI model for the answer
 python ask.py --model gpt-4o-mini "question"
+
+# Pick the retrieval language (default: auto-detect from the question)
+python ask.py --lang hi "गेट C22 कहाँ है?"
+python ask.py --lang auto "donde esta la puerta?"
 ```
+
+`--lang` accepts `en`, `hi`, `es`, or `auto` (the default). In `auto`, the same
+offline lingua detector used by the kiosk picks the language from the question
+(falling back to English when the text is unsupported), and that language scopes
+the retrieval exactly as the server does.
 
 ### Requirements
 
@@ -518,8 +575,9 @@ All API keys and key-looking tokens are masked in the output with `***` for safe
 
 ## Voice (Stage 2)
 
-Whisper (`faster-whisper`, `small.en`, int8) and Kokoro (`af_heart`) both run
-**in-process on CPU** in `.venv`, leaving the GPU to Ditto in Stage 3.
+Whisper (`faster-whisper`, multilingual `small`, int8) and Kokoro (per-language
+voice, e.g. `af_heart` for English) both run **in-process on CPU** in `.venv`,
+leaving the GPU to Ditto in Stage 3.
 
 | Endpoint | Purpose |
 |---|---|

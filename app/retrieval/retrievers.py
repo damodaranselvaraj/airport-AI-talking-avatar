@@ -7,9 +7,10 @@ from concurrent.futures import ThreadPoolExecutor
 from dataclasses import dataclass, field
 from typing import TYPE_CHECKING, Any, Optional, Union
 
+from app import i18n
 from app.retrieval.embedding import DenseEmbedder
 from app.retrieval.errors import StartupValidationError
-from app.retrieval.sparse import Bm25Index
+from app.retrieval.sparse import Bm25Registry
 from app.retrieval.store import ChromaStore
 from app.security import scrub
 from app.workflow.contracts import ErrorState, RetrievedPassage
@@ -27,23 +28,36 @@ class DenseRetriever:
         self._embedder = embedder
         self._store = store
 
-    def retrieve(self, query: str, top_k: int) -> list[tuple[str, float]]:
-        """Embed the query and return up to ``top_k`` (chunk_id, similarity), descending."""
+    def retrieve(
+        self, query: str, top_k: int, lang: str = i18n.DEFAULT
+    ) -> list[tuple[str, float]]:
+        """Embed the query and return up to ``top_k`` (chunk_id, similarity), descending.
+
+        Results are scoped to ``lang`` via a Chroma ``where={'lang': lang}`` filter.
+        """
         if top_k <= 0:
             return []
-        ranked = self._store.query(self._embedder.embed_query(query), top_k)
+        ranked = self._store.query(
+            self._embedder.embed_query(query), top_k, where={"lang": lang}
+        )
         return sorted(ranked, key=lambda item: -item[1])[:top_k]
 
 
 class SparseRetriever:
-    def __init__(self, index: Bm25Index) -> None:
-        self._index = index
+    def __init__(self, registry: Bm25Registry) -> None:
+        self._registry = registry
 
-    def retrieve(self, query: str, top_k: int) -> list[tuple[str, float]]:
-        """Up to ``top_k`` BM25 (chunk_id, score), descending; non-positive scores dropped."""
+    def retrieve(
+        self, query: str, top_k: int, lang: str = i18n.DEFAULT
+    ) -> list[tuple[str, float]]:
+        """Up to ``top_k`` BM25 (chunk_id, score), descending; non-positive scores dropped.
+
+        The per-language index is selected from the registry by ``lang``.
+        """
         if top_k <= 0:
             return []
-        hits = [(cid, s) for cid, s in self._index.query(query, top_k) if s > 0]
+        index = self._registry.get(lang)
+        hits = [(cid, s) for cid, s in index.query(query, top_k) if s > 0]
         return sorted(hits, key=lambda item: -item[1])[:top_k]
 
 
@@ -159,7 +173,7 @@ class HybridRetriever:
         settings: "Settings",
         embedder: DenseEmbedder,
         chroma: ChromaStore,
-        bm25: Bm25Index,
+        bm25: Bm25Registry,
         reranker: CohereReranker,
     ) -> None:
         self._settings = settings
@@ -184,7 +198,9 @@ class HybridRetriever:
             api_key=settings.openai_api_key,
         )
         chroma = ChromaStore(settings.chroma_dir, settings.chroma_collection)
-        bm25 = Bm25Index.load(settings.bm25_index_path)
+        bm25 = Bm25Registry.load(
+            settings.bm25_index_path, settings.supported_languages
+        )
         reranker = CohereReranker(
             settings.cohere_api_key,
             settings.reranker_model,
@@ -193,7 +209,7 @@ class HybridRetriever:
         return cls(settings, embedder, chroma, bm25, reranker)
 
     def _run_dense_sparse(
-        self, query: str
+        self, query: str, lang: str = i18n.DEFAULT
     ) -> tuple[Union[list[tuple[str, float]], Exception], Union[list[tuple[str, float]], Exception]]:
         """Run dense and sparse retrieval concurrently; return each as result-or-exception.
 
@@ -207,8 +223,8 @@ class HybridRetriever:
         """
         s = self._settings
         with ThreadPoolExecutor(max_workers=2) as executor:
-            dense_future = executor.submit(self._dense.retrieve, query, s.dense_top_k)
-            sparse_future = executor.submit(self._sparse.retrieve, query, s.sparse_top_k)
+            dense_future = executor.submit(self._dense.retrieve, query, s.dense_top_k, lang)
+            sparse_future = executor.submit(self._sparse.retrieve, query, s.sparse_top_k, lang)
 
             dense_outcome: Union[list[tuple[str, float]], Exception]
             sparse_outcome: Union[list[tuple[str, float]], Exception]
@@ -225,12 +241,16 @@ class HybridRetriever:
 
             return dense_outcome, sparse_outcome
 
-    def retrieve(self, query: str, top_k: int) -> list[RetrievedPassage]:
-        passages, error = self.retrieve_with_status(query, top_k)
+    def retrieve(
+        self, query: str, top_k: int, lang: str = i18n.DEFAULT
+    ) -> list[RetrievedPassage]:
+        passages, error = self.retrieve_with_status(query, top_k, lang)
         self.last_error = error
         return passages
 
-    def retrieve_trace(self, query: str, top_k: int) -> RetrievalTrace:
+    def retrieve_trace(
+        self, query: str, top_k: int, lang: str = i18n.DEFAULT
+    ) -> RetrievalTrace:
         """Run the same pipeline as ``retrieve_with_status`` and keep every stage's output.
 
         ``top_k`` is the *final* answer count (passed to Cohere reranking). The
@@ -246,11 +266,11 @@ class HybridRetriever:
             return trace
         s = self._settings
         try:
-            trace.dense = self._dense.retrieve(query, s.dense_top_k)
+            trace.dense = self._dense.retrieve(query, s.dense_top_k, lang)
         except Exception as exc:
             trace.errors["dense"] = repr(exc)
         try:
-            trace.sparse = self._sparse.retrieve(query, s.sparse_top_k)
+            trace.sparse = self._sparse.retrieve(query, s.sparse_top_k, lang)
         except Exception as exc:
             trace.errors["sparse"] = repr(exc)
         try:
@@ -286,7 +306,7 @@ class HybridRetriever:
         return trace
 
     def retrieve_with_status(
-        self, query: str, top_k: int
+        self, query: str, top_k: int, lang: str = i18n.DEFAULT
     ) -> tuple[list[RetrievedPassage], Optional[ErrorState]]:
         """Return up to ``top_k`` passages and a rerank-not-applied signal.
 
@@ -312,7 +332,7 @@ class HybridRetriever:
         s = self._settings
         
         # Run dense and sparse concurrently
-        dense_outcome, sparse_outcome = self._run_dense_sparse(query)
+        dense_outcome, sparse_outcome = self._run_dense_sparse(query, lang)
         
         # Unpack outcomes: result or exception
         dense: list[tuple[str, float]] = []

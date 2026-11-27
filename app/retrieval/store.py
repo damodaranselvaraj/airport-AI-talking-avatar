@@ -35,9 +35,9 @@ class ChromaStore:
                 metadatas=metadatas[start:end],
             )
 
-    def ids(self) -> set[str]:
-        """All stored chunk IDs."""
-        return set(self._collection.get(include=[])["ids"])
+    def ids(self, where: dict | None = None) -> set[str]:
+        """All stored chunk IDs, optionally filtered by a metadata ``where`` clause."""
+        return set(self._collection.get(where=where, include=[])["ids"])
 
     def get_records(self, ids: list[str]) -> dict[str, dict]:
         """Stored text, embedding and metadata for each ID that exists (used for rollback)."""
@@ -61,13 +61,24 @@ class ChromaStore:
         for start in range(0, len(ids), self._batch_size):
             self._collection.delete(ids=ids[start : start + self._batch_size])
 
-    def query(self, embedding: list[float], top_k: int) -> list[tuple[str, float]]:
-        """Return [(chunk_id, similarity)] ranked descending."""
+    def query(
+        self, embedding: list[float], top_k: int, where: dict | None = None
+    ) -> list[tuple[str, float]]:
+        """Return [(chunk_id, similarity)] ranked descending.
+
+        An optional ``where`` metadata filter scopes the query (e.g. {"lang": "hi"}).
+        When a filter is given, ``n_results`` is clamped to the full collection count
+        (a safe upper bound): Chroma simply returns fewer rows when the filter matches
+        fewer docs. With ``where=None`` behavior is exactly as before.
+        """
         n_results = min(top_k, self.count())
         if n_results <= 0:
             return []
         result = self._collection.query(
-            query_embeddings=[embedding], n_results=n_results, include=["distances"]
+            query_embeddings=[embedding],
+            n_results=n_results,
+            where=where,
+            include=["distances"],
         )
         ranked = [
             (chunk_id, 1.0 - float(distance))
@@ -96,5 +107,12 @@ class ChromaStore:
             return 0
         return len(embeddings[0])
 
-    def count(self) -> int:
-        return self._collection.count()
+    def count(self, where: dict | None = None) -> int:
+        """Number of stored chunks, optionally filtered by a metadata ``where`` clause."""
+        if where is None:
+            return self._collection.count()
+        try:
+            return self._collection.count(where=where)
+        except TypeError:
+            # Older chromadb has no where= on count(); fall back to a filtered get.
+            return len(self.ids(where))

@@ -7,8 +7,9 @@ from fastapi.testclient import TestClient
 from app.audio_store import AudioStore
 from app.main import create_app
 from app.services import Services
+from app.workflow.routing import ResponseBook
 from config.settings import Settings
-from tests.agents.helpers import make_agent_workflow
+from tests.agents.helpers import RESPONSES, make_agent_workflow
 from tests.fakes import FakeSynthesizer, FakeTranscriber
 
 SECRETS = {
@@ -57,9 +58,16 @@ def build_services(settings):
             "transcriber": overrides.pop("transcriber", FakeTranscriber()),
             "synthesizer": overrides.pop("synthesizer", FakeSynthesizer()),
         }
-        for name in ("avatar", "video", "default_face", "faces", "clips", "clip_renderer"):
+        for name in (
+            "avatar", "video", "default_face", "faces", "clips", "clip_renderer",
+            "detector", "responses_book",
+        ):
             if name in overrides:
                 ctor[name] = overrides.pop(name)
+        ctor.setdefault(
+            "responses_book",
+            ResponseBook.from_file(RESPONSES, settings.default_language),
+        )
         svc = Services(
             settings=settings,
             workflow=workflow,

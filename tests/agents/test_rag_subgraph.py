@@ -17,9 +17,9 @@ def build(retriever: FakeRetriever, timeout: float = 5.0):
     return build_rag_subgraph(assessor, TimeoutRunner(timeout), tool)
 
 
-def request(text: str = "Where is gate C22?") -> dict:
+def request(text: str = "Where is gate C22?", language: str = "en") -> dict:
     """Initial sub-graph state holding only the request."""
-    return {"request": KioskRequest(session_id="s1", text=text)}
+    return {"request": KioskRequest(session_id="s1", text=text, language=language)}
 
 
 def passage(chunk_id: str, score: float) -> RetrievedPassage:
@@ -36,6 +36,15 @@ def test_three_strong_passages_give_strong_tier():
     assert out["tier"] is EvidenceTier.STRONG
     assert set(out["timings"]) == {"retrieve", "evidence_evaluator"}
     assert retriever.calls == ["Where is gate C22?"]
+    assert retriever.languages == ["en"]  # the resolved request language threaded through
+
+
+def test_request_language_is_threaded_into_retrieval():
+    """retrieve_node reads req.language and passes it to the search tool/retriever."""
+    retriever = FakeRetriever([passage("a", 0.9)])
+    out = build(retriever).invoke(request("गेट सी22 कहाँ है?", language="hi"))
+    assert out["passages"]
+    assert retriever.languages == ["hi"]  # Hindi turn reached the retriever as hi
 
 
 def test_weak_scores_give_weak_tier():
@@ -72,12 +81,12 @@ def test_slow_retrieval_times_out_into_an_error():
     class Slow(FakeRetriever):
         """A retriever that sleeps longer than the timeout."""
 
-        def retrieve_with_status(self, query, top_k):
+        def retrieve_with_status(self, query, top_k, language=None):
             """Sleep, then behave like the normal fake."""
             import time
 
             time.sleep(1.0)
-            return super().retrieve_with_status(query, top_k)
+            return super().retrieve_with_status(query, top_k, language)
 
     out = build(Slow([GATE_C22]), timeout=0.1).invoke(request())
     assert out["error"].stage == "retrieve"

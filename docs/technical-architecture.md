@@ -35,7 +35,9 @@ one job and a typed contract (`AgentState`). The agents reuse, unchanged, the ea
 blocks: `Router`, `ResponseBook`, `HybridRetriever`, `EvidenceAssessor`, `OpenAIAnswerGenerator`
 and `CitationOverlapValidator`.
 
-MVP1 scope: English only, stateless per turn, one airport knowledge base.
+Scope: **English, Hindi and Spanish** with strict per-language isolation and no
+translation (see [2a. Multilanguage (EN/HI/ES)](#2a-multilanguage-enhies)),
+stateless per turn, one airport knowledge base.
 
 ---
 
@@ -103,6 +105,75 @@ If `spoken` is false both URLs are `null` and the page just shows the text.
 
 ---
 
+## 2a. Multilanguage (EN/HI/ES)
+
+The kiosk serves English, Hindi and Spanish. The language of a turn is decided
+**once**, server-side, and every downstream stage keys off that single value.
+There is no UI language selector and no translation anywhere.
+
+### Detection and the `/api/ask` short-circuit
+
+* **Typed text** is detected in `/api/ask` by an offline
+  [lingua](https://github.com/pemistahl/lingua-py) detector
+  (`app/language/detector.py`), restricted to EN/HI/ES. Its result overrides the
+  (untrusted) inbound `body.language`, and the detected code is the one placed on
+  `KioskRequest.language`.
+* **Spoken input** uses the multilingual Whisper `small` model
+  (`language=None`, task `transcribe`), which auto-detects and returns the
+  transcript in the native script. The final supported-set decision is still made
+  by lingua on the box text at `/api/ask`.
+* **Unsupported language → refusal short-circuit.** When the detector reports the
+  text is not one of the three supported languages, `/api/ask` does **not** call
+  `services.workflow.run` and does **not** touch retrieval. It returns
+  `ResponseStatus.REFUSED` in the default language (`en`) with `citations=[]` and
+  the approved `unsupported_language` wording, then runs the normal media path
+  (serving the English `unsupported_language` clip when it exists). A detector
+  exception is treated as unsupported — never a 500, never exception text.
+
+```mermaid
+flowchart LR
+    T["POST /api/ask<br/>body.text"] --> D{"detector.detect(text)<br/>supported?"}
+    D -->|"no"| REF["REFUSED in en<br/>no workflow, no retrieval<br/>unsupported_language wording"]
+    D -->|"yes (en/hi/es)"| WF["workflow.run(KioskRequest<br/>language = detected code)"]
+```
+
+### Strict per-language isolation in retrieval
+
+One Chroma collection is read with a `where={"lang": L}` filter, and there is one
+BM25 index per language (a `Bm25Registry` over
+`.bm25/knowledge_base.<lang>.pkl`), selected by the resolved `language`. Dense and
+sparse candidates are therefore language-scoped **before** RRF fusion and Cohere
+rerank, so no cross-language leakage is possible: a Hindi turn only ever sees
+Hindi passages and answers in Hindi. A language with no evidence for a topic
+degrades to the safe fallback (spoken in that language).
+
+### Per-language speech and clips
+
+* **Kokoro** runs one pipeline per language (lazily built, cached), keyed by the
+  Kokoro `lang_code` (`a`/`h`/`e`) with the per-language voice from `app/i18n.py`
+  (`af_heart` / `hf_alpha` / `ef_dora`). `warm_up()` warms all three at startup.
+* **Clip caches** are per language: `build_services` builds one `ClipCache` +
+  `ClipRenderer` per supported language and schedules all three. The caches share
+  the `audio/` and `default-<digest>/` dirs; phrase hashes are language-salted so
+  files never collide, and each cache's startup purge is given the union of the
+  other languages' hashes so it never deletes their clips.
+  `Services.clips_status()` aggregates: `ready` only when every language is
+  complete.
+* **espeak-ng** is a host OS prerequisite for **both** Hindi (`h`) and Spanish
+  (`e`), because Kokoro's G2P for them routes through `misaki.espeak.EspeakG2P`.
+  It is never installed by the app; if absent, `warm_up()` fails loudly at startup.
+
+### Per-language startup validation
+
+`validate_startup` keeps the Cohere probe, the Chroma-present check and the global
+embedding-dimensions check (the embedding space is shared), and replaces the
+single global BM25 parity check with per-language checks: for each supported
+language it asserts the Chroma partition (`count(where={"lang": L})`) is non-empty,
+that `bm25_path_for(..., L)` exists and loads, and that the per-language Chroma id
+set equals that BM25 index's `chunk_ids`.
+
+---
+
 ## 3. Tech stack
 
 | Layer | Choice | Where |
@@ -113,12 +184,13 @@ If `spoken` is false both URLs are `null` and the page just shows the text.
 | Intent classifier | OpenAI `gpt-4o-mini` (setting `OPENAI_CLASSIFIER_MODEL`) | `supervisor.py` |
 | Answer generation | OpenAI `gpt-4o` via the `openai` SDK (JSON mode, temperature 0) | `app/workflow/answer.py` |
 | Embeddings | OpenAI `text-embedding-3-small` (1536 dimensions) | `app/retrieval/embedding.py` |
-| Dense search | ChromaDB persistent store, cosine | `app/retrieval/store.py` |
-| Sparse search | BM25 (`rank-bm25`), pickled index | `app/retrieval/sparse.py` |
+| Dense search | ChromaDB persistent store, cosine, per-language `where={"lang"}` filter | `app/retrieval/store.py` |
+| Sparse search | BM25 (`rank-bm25`), one pickled index per language (`Bm25Registry`) | `app/retrieval/sparse.py` |
 | Fusion | Reciprocal Rank Fusion | `app/retrieval/retrievers.py` |
 | Reranking | Cohere `rerank-v3.5` | `app/retrieval/retrievers.py` |
-| Speech to text | `faster-whisper` (`small.en`, int8, CPU) | `app/speech_to_text/` |
-| Text to speech | Kokoro-82M (CPU) | `app/text_to_speech/` |
+| Language detection | lingua (offline, EN/HI/ES) for typed text | `app/language/detector.py` |
+| Speech to text | `faster-whisper` (multilingual `small`, int8, CPU, auto-detect) | `app/speech_to_text/` |
+| Text to speech | Kokoro-82M (CPU), one pipeline/voice per language | `app/text_to_speech/` |
 | Talking avatar | Ditto (GPU, separate conda env, warm worker) | `app/avatar/`, `scripts/ditto_worker.py` |
 | Frontend | Plain HTML, CSS and JavaScript | `app/ui/` |
 | Config | `pydantic-settings` + `.env`; JSON for policy, wording, thresholds | `config/` |
@@ -502,7 +574,6 @@ Wording lives in `config/responses.json` per language: `greeting`, `thanks`, `go
 Not built in MVP1:
 
 * **PII detection and masking** (Presidio). Deliberately excluded.
-* **Multi-language input and output** (Hindi, Spanish). Planned for MVP2.
 * **Conversation memory.** The checkpointer is wired but history is not used.
 * **Jev (TypeSafe) validation.** The deterministic validator is used; `TYPESAFE_API_KEY` is still
   required by settings.

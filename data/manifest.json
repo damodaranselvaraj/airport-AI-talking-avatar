@@ -3,13 +3,19 @@
   "iata": "DIA",
   "closed_world": true,
   "documents": [
-    {"id": "terminals", "title": "Terminals and airlines", "lang": "en", "source": "data/terminals.md"},
-    {"id": "gates", "title": "Gates and last-call", "lang": "en", "source": "data/gates.md"},
-    {"id": "security", "title": "Security screening", "lang": "en", "source": "data/security.md"},
-    {"id": "transport", "title": "Metro, taxi, car park, hotel shuttle", "lang": "en", "source": "data/transport.md"},
-    {"id": "amenities", "title": "Prayer room, medical, lost and found, wifi", "lang": "en", "source": "data/amenities.md"},
-    {"id": "hours", "title": "Opening hours and phones", "lang": "en", "source": "data/hours.md"},
-    {"id": "faq", "title": "Short spoken answers", "lang": "en", "source": "data/faq.md"}
+    {"id": "terminals",    "title": "Terminals and airlines",                    "lang": "en", "source": "data/en/terminals.md"},
+    {"id": "gates",        "title": "Gates and last-call",                        "lang": "en", "source": "data/en/gates.md"},
+    {"id": "security",     "title": "Security screening",                         "lang": "en", "source": "data/en/security.md"},
+    {"id": "transport",    "title": "Metro, taxi, car park, hotel shuttle",       "lang": "en", "source": "data/en/transport.md"},
+    {"id": "amenities",    "title": "Prayer room, medical, lost and found, wifi", "lang": "en", "source": "data/en/amenities.md"},
+    {"id": "hours",        "title": "Opening hours and phones",                   "lang": "en", "source": "data/en/hours.md"},
+    {"id": "faq",          "title": "Short spoken answers",                       "lang": "en", "source": "data/en/faq.md"},
+    {"id": "amenities-hi", "title": "सुविधाएँ",      "lang": "hi", "source": "data/hi/amenities-hi.md"},
+    {"id": "faq-hi",       "title": "सामान्य प्रश्न", "lang": "hi", "source": "data/hi/faq-hi.md"},
+    {"id": "gates-hi",     "title": "गेट",           "lang": "hi", "source": "data/hi/gates-hi.md"},
+    {"id": "amenities-es", "title": "Servicios",     "lang": "es", "source": "data/es/amenities-es.md"},
+    {"id": "faq-es",       "title": "Preguntas",     "lang": "es", "source": "data/es/faq-es.md"},
+    {"id": "gates-es",     "title": "Puertas",       "lang": "es", "source": "data/es/gates-es.md"}
   ],
-  "do_not_ingest": ["unknown_traps.json", "README.md", "manifest.json"]
+  "do_not_ingest": ["golden.json", "unknown_traps.json", "manifest.json", "README.md"]
 }
