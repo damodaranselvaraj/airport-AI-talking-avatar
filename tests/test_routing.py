@@ -111,6 +111,47 @@ def test_normalize_handles_punctuation_and_apostrophes():
     assert normalize("fit-to-fly") == "fit to fly"
 
 
+def test_normalize_preserves_devanagari_marks():
+    norm = normalize("गेट C22 कहाँ है?")
+    assert "गेट" in norm and "कहाँ" in norm       # matras survive, not stripped to "ग ट"/"कह ह"
+    assert "c22" in norm and "?" not in norm
+
+
 def test_unknown_language_falls_back_to_default(router, book):
     assert router.route("hello", language="xx").route is Route.GREETING
     assert book.greeting("greeting", language="xx")
+
+
+# ------------------------------------------------------------ hi / es blocks
+@pytest.mark.parametrize(
+    "text,language",
+    [
+        ("नमस्ते", "hi"),
+        ("नमस्कार", "hi"),
+        ("हैलो", "hi"),
+        ("धन्यवाद", "hi"),
+        ("hola", "es"),
+        ("buenos días", "es"),
+        ("gracias", "es"),
+        ("adiós", "es"),
+    ],
+)
+def test_hi_es_greetings_route_to_greeting(router, text, language):
+    assert router.route(text, language=language).route is Route.GREETING
+
+
+def test_unsupported_language_key_exists_in_every_block(book):
+    for lang in ("en", "hi", "es"):
+        assert book.unsupported_language(lang).strip()
+    # Known English wording is the only EN addition.
+    assert book.unsupported_language("en") == "I can help in English, Hindi, or Spanish."
+
+
+def test_all_wording_across_languages_is_free_of_trap_banned_phrases(book):
+    banned = {b.lower() for t in TRAPS for b in t["must_not_contain"]}
+    # 'gate'/'boarding' may legitimately appear in generic greeting/fallback wording.
+    banned -= {"gate", "boarding"}
+    for text in book.all_strings():
+        low = text.lower()
+        for phrase in banned:
+            assert phrase not in low, f"{phrase!r} found in {text!r}"

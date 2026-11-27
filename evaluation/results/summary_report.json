@@ -1,0 +1,195 @@
+{
+  "run_id": "20261025T184839Z",
+  "timestamp": "2026-10-25T18:48:39.535246+00:00",
+  "dataset": "golden_dataset.json",
+  "n_samples": 19,
+  "judge": "openai/gpt-4o-mini",
+  "metrics": [
+    {
+      "metric": "context_precision",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\context_precision_report.json",
+      "error": null,
+      "headline": "context_precision",
+      "headline_value": 0.9999999999263158,
+      "aggregate": {
+        "context_precision": 0.9999999999263158,
+        "context_precision_std": 2.496535201434005e-11,
+        "count_scored": 19,
+        "count_failed": 0,
+        "count_skipped": 0,
+        "precision@1": 1.0,
+        "precision@3": 1.0,
+        "precision@5": 1.0
+      },
+      "n_samples": 19,
+      "duration_seconds": 42.935
+    },
+    {
+      "metric": "context_recall",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\context_recall_report.json",
+      "error": null,
+      "headline": "context_recall",
+      "headline_value": 0.9912280701754386,
+      "aggregate": {
+        "context_recall": 0.9912280701754386,
+        "context_recall_std": 0.037216146378239334,
+        "count_scored": 19,
+        "count_failed": 0,
+        "count_skipped": 0,
+        "recall@1": 0.7368421052631579,
+        "recall@3": 1.0,
+        "recall@5": 1.0
+      },
+      "n_samples": 19,
+      "duration_seconds": 29.677
+    },
+    {
+      "metric": "mrr",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\mrr_report.json",
+      "error": null,
+      "headline": "mrr",
+      "headline_value": 1.0,
+      "aggregate": {
+        "mrr": 1.0,
+        "count_scored": 19,
+        "hit_rate@1": 1.0,
+        "hit_rate@3": 1.0,
+        "hit_rate@5": 1.0,
+        "n_no_relevant": 0
+      },
+      "n_samples": 19,
+      "duration_seconds": 0.027
+    },
+    {
+      "metric": "ndcg",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\ndcg_report.json",
+      "error": null,
+      "headline": "ndcg@5",
+      "headline_value": 1.0,
+      "aggregate": {
+        "ndcg@1": 1.0,
+        "ndcg@3": 1.0,
+        "ndcg@5": 1.0,
+        "count_scored": 19
+      },
+      "n_samples": 19,
+      "duration_seconds": 15.121
+    },
+    {
+      "metric": "accuracy",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\accuracy_report.json",
+      "error": null,
+      "headline": "accuracy",
+      "headline_value": 0.8947368421052632,
+      "aggregate": {
+        "accuracy": 0.8947368421052632,
+        "exact_match_rate": 0.0,
+        "contains_rate": 0.0,
+        "token_f1_mean": 0.614582459732489,
+        "n_correct": 17,
+        "count_scored": 19
+      },
+      "n_samples": 19,
+      "duration_seconds": 0.021
+    },
+    {
+      "metric": "answer_relevance",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\answer_relevance_report.json",
+      "error": null,
+      "headline": "answer_relevance",
+      "headline_value": 0.773875001044226,
+      "aggregate": {
+        "answer_relevance": 0.773875001044226,
+        "answer_relevance_std": 0.20998464271706946,
+        "answer_relevance_min": 0.0,
+        "answer_relevance_max": 0.9736989909173732,
+        "count_scored": 19,
+        "count_failed": 0,
+        "count_skipped": 0
+      },
+      "n_samples": 19,
+      "duration_seconds": 99.217
+    },
+    {
+      "metric": "faithfulness",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\faithfulness_report.json",
+      "error": null,
+      "headline": "faithfulness",
+      "headline_value": 0.9078947368421053,
+      "aggregate": {
+        "faithfulness": 0.9078947368421053,
+        "faithfulness_std": 0.24616167018249616,
+        "faithfulness_min": 0.0,
+        "n_possible_hallucination": 3,
+        "hallucination_rate": 0.15789473684210525,
+        "count_scored": 19,
+        "count_failed": 0,
+        "count_skipped": 0
+      },
+      "n_samples": 19,
+      "duration_seconds": 48.605
+    },
+    {
+      "metric": "bleu",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\bleu_report.json",
+      "error": null,
+      "headline": "corpus_bleu",
+      "headline_value": 0.2691426527133193,
+      "aggregate": {
+        "corpus_bleu": 0.2691426527133193,
+        "sentence_bleu_mean": 0.3163537372172945,
+        "count_scored": 19
+      },
+      "n_samples": 19,
+      "duration_seconds": 0.22
+    },
+    {
+      "metric": "rouge",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\rouge_report.json",
+      "error": null,
+      "headline": "rougeL_f1",
+      "headline_value": 0.5330772926705689,
+      "aggregate": {
+        "rouge1_precision": 0.8057974511581589,
+        "rouge1_recall": 0.5298269978078436,
+        "rouge1_f1": 0.6228655798835246,
+        "rouge2_precision": 0.6004638216622927,
+        "rouge2_recall": 0.39491313644152265,
+        "rouge2_f1": 0.4634986918119652,
+        "rougeL_precision": 0.6794072010825172,
+        "rougeL_recall": 0.45751456083744013,
+        "rougeL_f1": 0.5330772926705689,
+        "count_scored": 19
+      },
+      "n_samples": 19,
+      "duration_seconds": 1.426
+    },
+    {
+      "metric": "bertscore",
+      "status": "ok",
+      "report": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\results\\bertscore_report.json",
+      "error": null,
+      "headline": "bertscore_f1",
+      "headline_value": 0.8995072810273421,
+      "aggregate": {
+        "bertscore_f1": 0.8995072810273421,
+        "bertscore_precision": 0.9226874709129333,
+        "bertscore_recall": 0.8783028251246402,
+        "count_scored": 19,
+        "count_skipped": 0
+      },
+      "n_samples": 19,
+      "duration_seconds": 33.954
+    }
+  ],
+  "skipped": []
+}

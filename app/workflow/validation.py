@@ -99,6 +99,11 @@ class CitationOverlapValidator:
                 return ValidationResult(False, "unsupported specific detail")
 
         # 2. Each substantive sentence must be mostly made of words from the passages.
+        #    This lexical check only works on Latin script: ``tokenize`` matches [a-z0-9]+, so a
+        #    Devanagari (Hindi) sentence yields no content words and the overlap would be 0, wrongly
+        #    rejecting every valid Hindi answer. Skip the overlap check when a sentence has fewer
+        #    than 2 Latin content words; the digit/code guard in step 1 already ran for every
+        #    language. Spanish is Latin script, so it keeps full overlap behavior.
         for sentence in filter(None, (s.strip() for s in _SENTENCE_RE.split(answer))):
             words = [w for w in _content_tokens(sentence) if not _has_digit(w)]
             if len(words) < 2:

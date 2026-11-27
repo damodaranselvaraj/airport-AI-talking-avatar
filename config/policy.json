@@ -103,6 +103,88 @@
           ]
         }
       ]
+    },
+    "hi": {
+      "greeting": [
+        {
+          "id": "greeting",
+          "patterns": [
+            "(नमस्ते|नमस्कार|हैलो|हाय|सुप्रभात)( वहाँ| कियोस्क)?",
+            "(आप कैसे हैं|क्या हाल है)"
+          ]
+        },
+        {
+          "id": "thanks",
+          "patterns": ["(धन्यवाद|शुक्रिया)( बहुत)?"]
+        },
+        {
+          "id": "goodbye",
+          "patterns": ["(अलविदा|फिर मिलेंगे|शुभ यात्रा)"]
+        }
+      ],
+      "denied": [
+        {
+          "id": "flight_status",
+          "patterns": ["\\bउड़ान\\b.*\\b(स्थिति|जानकारी)\\b", "\\bफ्लाइट\\b.*\\b(स्थिति|स्टेटस)\\b"]
+        },
+        {
+          "id": "live_gate",
+          "patterns": ["\\b(मेरी|हमारी) (उड़ान|फ्लाइट)\\b.*\\bगेट\\b", "\\bकौन से गेट\\b.*\\b(उड़ान|फ्लाइट)\\b"]
+        },
+        {
+          "id": "visa",
+          "patterns": ["\\bवीज़ा\\b", "\\bवीजा\\b", "\\bप्रवेश\\b.*\\b(नियम|देश)\\b"]
+        },
+        {
+          "id": "medical",
+          "patterns": ["\\b(कौन सी|कौनसी) (दवा|दवाई|गोली)\\b", "\\b(सीने में दर्द|दिल का दौरा|बेहोश)\\b"]
+        },
+        {
+          "id": "fare",
+          "patterns": ["\\b(कितना|कीमत|किराया|भाड़ा)\\b.*\\b(टैक्सी|मेट्रो|बस|पार्किंग)\\b"]
+        }
+      ]
+    },
+    "es": {
+      "greeting": [
+        {
+          "id": "greeting",
+          "patterns": [
+            "(hola|buenos días|buenas tardes|buenas noches|buenas|qué tal)( kiosco)?",
+            "(cómo estás|cómo está|como estas)"
+          ]
+        },
+        {
+          "id": "thanks",
+          "patterns": ["(gracias|muchas gracias|mil gracias)"]
+        },
+        {
+          "id": "goodbye",
+          "patterns": ["(adiós|adios|hasta luego|buen viaje)"]
+        }
+      ],
+      "denied": [
+        {
+          "id": "flight_status",
+          "patterns": ["\\bestado (de|del) (mi |nuestro )?vuelo\\b", "\\bvuelo\\b.*\\b(retrasado|cancelado|a tiempo)\\b"]
+        },
+        {
+          "id": "live_gate",
+          "patterns": ["\\bqué puerta\\b.*\\bvuelo\\b", "\\b(mi|nuestro) vuelo\\b.*\\bpuerta\\b"]
+        },
+        {
+          "id": "visa",
+          "patterns": ["\\bvisados?\\b", "\\bvisas?\\b", "\\bentrar (al|en el) país\\b", "\\brequisitos de entrada\\b"]
+        },
+        {
+          "id": "medical",
+          "patterns": ["\\bqué (medicina|medicamento|pastilla|pastillas)\\b", "\\b(dolor de pecho|infarto|desmay\\w+)\\b"]
+        },
+        {
+          "id": "fare",
+          "patterns": ["\\b(cuánto|cuanto|precio|tarifa|coste|costo)\\b.*\\b(taxi|metro|autobús|bus|estacionamiento|aparcamiento)\\b"]
+        }
+      ]
     }
   }
 }

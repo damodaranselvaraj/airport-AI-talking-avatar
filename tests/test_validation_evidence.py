@@ -121,6 +121,20 @@ def test_user_message_numbers_passages_and_includes_source():
     assert msg.endswith("Question: Where?")
 
 
+def test_user_message_prepends_answer_language():
+    assert build_user_message("Where?", [GATE_C22]).startswith("Answer-language: en\n")
+    hi_msg = build_user_message("गेट कहाँ है?", [GATE_C22], "hi")
+    assert hi_msg.startswith("Answer-language: hi\n")
+    assert "Passages:" in hi_msg  # the Answer-language line precedes the Passages block
+
+
+def test_system_prompt_names_the_answer_language_rule():
+    from app.workflow.answer import SYSTEM_PROMPT
+
+    assert "Answer-language" in SYSTEM_PROMPT
+    assert "Do not translate the passages" in SYSTEM_PROMPT
+
+
 class _Client:
     """Minimal OpenAI client stand-in recording the request."""
 
@@ -151,3 +165,13 @@ def test_openai_generator_skips_call_without_passages():
     client = _Client("{}")
     assert not OpenAIAnswerGenerator("k", "gpt-4o", 100, client=client).generate("q", []).can_answer
     assert client.kwargs is None
+
+
+def test_openai_generator_messages_carry_the_answer_language():
+    client = _Client(json.dumps({"can_answer": True, "answer": "गेट सी22 टर्मिनल 2 में है।", "used_passages": [1]}))
+    gen = OpenAIAnswerGenerator("k", "gpt-4o", 400, client=client)
+    gen.generate("गेट सी22 कहाँ है?", [GATE_C22], language="hi")
+    messages = client.kwargs["messages"]
+    system, user = messages[0]["content"], messages[1]["content"]
+    assert "Answer-language" in system  # the system rule references the field
+    assert user.startswith("Answer-language: hi\n")  # the user message carries the resolved code

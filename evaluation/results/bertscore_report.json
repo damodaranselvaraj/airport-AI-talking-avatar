@@ -1,0 +1,159 @@
+{
+  "metric": "bertscore",
+  "headline": {
+    "name": "bertscore_f1",
+    "value": 0.8995072810273421
+  },
+  "aggregate": {
+    "bertscore_f1": 0.8995072810273421,
+    "bertscore_precision": 0.9226874709129333,
+    "bertscore_recall": 0.8783028251246402,
+    "count_scored": 19,
+    "count_skipped": 0
+  },
+  "metadata": {
+    "dataset": "golden_dataset.json",
+    "n_samples": 19,
+    "config": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\config.yaml",
+    "duration_seconds": 33.941,
+    "python": "3.12.4",
+    "model_type": "distilbert-base-uncased",
+    "lang": "en",
+    "rescale_with_baseline": false
+  },
+  "per_sample": [
+    {
+      "index": 0,
+      "question": "What are the key details regarding Concourse C at the airport, particularly in relation to Gate C22?",
+      "bertscore_precision": 0.9169164299964905,
+      "bertscore_recall": 0.8377007246017456,
+      "bertscore_f1": 0.8755204081535339
+    },
+    {
+      "index": 1,
+      "question": "Whaer is the gate for Sahara Jet at DIA?",
+      "bertscore_precision": 0.847481369972229,
+      "bertscore_recall": 0.8012527227401733,
+      "bertscore_f1": 0.8237189650535583
+    },
+    {
+      "index": 2,
+      "question": "What last call time for flights at DIA?",
+      "bertscore_precision": 0.9894999265670776,
+      "bertscore_recall": 0.8923186659812927,
+      "bertscore_f1": 0.9383999705314636
+    },
+    {
+      "index": 3,
+      "question": "What should passengers expect when boarding from gate B28 at Dam International Airport, and how should they prepare for the boarding process?",
+      "bertscore_precision": 0.9094845056533813,
+      "bertscore_recall": 0.8715790510177612,
+      "bertscore_f1": 0.8901284337043762
+    },
+    {
+      "index": 4,
+      "question": "Wut flights are at gate B29?",
+      "bertscore_precision": 0.7756829261779785,
+      "bertscore_recall": 0.7509270906448364,
+      "bertscore_f1": 0.763104259967804
+    },
+    {
+      "index": 5,
+      "question": "What about B30 gate for boarding?",
+      "bertscore_precision": 0.9544317722320557,
+      "bertscore_recall": 0.9746562242507935,
+      "bertscore_f1": 0.9644380211830139
+    },
+    {
+      "index": 6,
+      "question": "What airlines operate in Terminal 2 at Dam International Airport, specifically including Horizon Air?",
+      "bertscore_precision": 0.9584959745407104,
+      "bertscore_recall": 0.9402951002120972,
+      "bertscore_f1": 0.9493083357810974
+    },
+    {
+      "index": 7,
+      "question": "What is the layout and function of the terminals at Dam International Airport?",
+      "bertscore_precision": 0.7838311791419983,
+      "bertscore_recall": 0.8503376841545105,
+      "bertscore_f1": 0.8157311081886292
+    },
+    {
+      "index": 8,
+      "question": "Which terminal at Dam International Airport does Sahara Jet operate from?",
+      "bertscore_precision": 0.9918882846832275,
+      "bertscore_recall": 0.9330611824989319,
+      "bertscore_f1": 0.9615758657455444
+    },
+    {
+      "index": 9,
+      "question": "What steps should a traveler take to verify flight information at the airline desk and ensure timely boarding at Gate C22, considering the last call policy and potential bus boarding at other gates?",
+      "bertscore_precision": 0.9287886619567871,
+      "bertscore_recall": 0.8933380246162415,
+      "bertscore_f1": 0.9107185006141663
+    },
+    {
+      "index": 10,
+      "question": "What is the concourse information for boarding by bus at the airport, and how does it relate to the nearest gates and their respective amenities?",
+      "bertscore_precision": 0.8792838454246521,
+      "bertscore_recall": 0.8277009129524231,
+      "bertscore_f1": 0.8527129888534546
+    },
+    {
+      "index": 11,
+      "question": "What concourse information should I know about boarding by bus at the airport, specifically regarding gates B28, B29, B30, and D16, D17, D18?",
+      "bertscore_precision": 0.9471189379692078,
+      "bertscore_recall": 0.8958088755607605,
+      "bertscore_f1": 0.9207496047019958
+    },
+    {
+      "index": 12,
+      "question": "How much extra time should a traveler allow when boarding from bus gates B28, B29, B30, and D16, D17, D18 compared to the regular travel time from security to gate C22?",
+      "bertscore_precision": 0.9328416585922241,
+      "bertscore_recall": 0.8638505935668945,
+      "bertscore_f1": 0.8970215320587158
+    },
+    {
+      "index": 13,
+      "question": "How can I verify flight information at the airline desk and what should I consider regarding last call and bus boarding gates?",
+      "bertscore_precision": 0.9300294518470764,
+      "bertscore_recall": 0.8720752000808716,
+      "bertscore_f1": 0.9001203775405884
+    },
+    {
+      "index": 14,
+      "question": "What are the check-in procedures and gate information for Cedar Pacific at Dam International Airport?",
+      "bertscore_precision": 0.9546791911125183,
+      "bertscore_recall": 0.9050214290618896,
+      "bertscore_f1": 0.9291872978210449
+    },
+    {
+      "index": 15,
+      "question": "Wht terminal is Cedar Pacific in and how long does it take to get to gate C22?",
+      "bertscore_precision": 0.9353222846984863,
+      "bertscore_recall": 0.8678227066993713,
+      "bertscore_f1": 0.9003090858459473
+    },
+    {
+      "index": 16,
+      "question": "What terminal does Sandpiper operate from at Dam International Airport, and what are the gate details associated with it?",
+      "bertscore_precision": 0.9561407566070557,
+      "bertscore_recall": 0.8630005121231079,
+      "bertscore_f1": 0.9071862101554871
+    },
+    {
+      "index": 17,
+      "question": "What gates does Pearl Wings use at Dam International Airport and how long does it take to walk from T1 to those gates?",
+      "bertscore_precision": 0.9969984292984009,
+      "bertscore_recall": 0.9969984292984009,
+      "bertscore_f1": 0.9969984292984009
+    },
+    {
+      "index": 18,
+      "question": "Wht are the check-in and boarding procedures for Sahara Jet at Dam International Airport?",
+      "bertscore_precision": 0.942146360874176,
+      "bertscore_recall": 0.8500085473060608,
+      "bertscore_f1": 0.8937089443206787
+    }
+  ]
+}

@@ -56,10 +56,16 @@ class Settings(BaseSettings):
 
     # --- Kiosk behavior ---
     default_language: str = Field("en", description="Active language (English for v1)")
+    supported_languages: list[str] = Field(
+        ["en", "hi", "es"],
+        description="Supported languages (mirrors app.i18n.SUPPORTED; i18n is the authority)",
+    )
     session_timeout_seconds: int = Field(120, description="Visible session timer budget")
 
     # --- Voice: speech-to-text (Whisper, CPU) ---
-    whisper_model: str = Field("small.en", description="faster-whisper model size/name")
+    whisper_model: str = Field(
+        "small", description="faster-whisper model size/name (multilingual)"
+    )
     whisper_compute_type: str = Field("int8", description="CTranslate2 compute type")
     whisper_device: str = Field("cpu", description="Ditto owns the GPU; keep Whisper on CPU")
     max_audio_seconds: float = Field(20.0, description="Reject recordings longer than this")

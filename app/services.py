@@ -6,11 +6,13 @@ fails loudly if anything is wrong.
 """
 from __future__ import annotations
 
+import hashlib
 import logging
 from dataclasses import dataclass
 from pathlib import Path
 from typing import TYPE_CHECKING, Callable, Optional, Protocol
 
+from app import i18n
 from app.audio_store import AudioStore
 from app.avatar.clips import ClipCache, ClipRenderer
 from app.avatar.faces import FaceStore
@@ -21,6 +23,8 @@ from app.workflow.contracts import KioskRequest, Transcript, TurnOutcome
 
 if TYPE_CHECKING:
     from config.settings import Settings
+    from app.language.detector import LanguageDetector
+    from app.workflow.routing import ResponseBook
 
 logger = logging.getLogger(__name__)
 
@@ -40,7 +44,7 @@ class Transcriber(Protocol):
 class Synthesizer(Protocol):
     ready: bool
 
-    def synthesize(self, text: str) -> bytes: ...
+    def synthesize(self, text: str, language: str = "en") -> bytes: ...
 
 
 class AvatarRenderer(Protocol):
@@ -79,8 +83,10 @@ class Services:
     video: Optional[VideoStore] = None
     default_face: Optional[Path] = None  # the concierge image; None means no video
     faces: Optional[FaceStore] = None   # traveler photos, session only
-    clips: Optional[ClipCache] = None   # pre-rendered fixed-phrase videos
-    clip_renderer: Optional[ClipRenderer] = None
+    clips: Optional[dict[str, ClipCache]] = None   # per-language pre-rendered fixed-phrase videos
+    clip_renderer: Optional[dict[str, ClipRenderer]] = None
+    detector: Optional["LanguageDetector"] = None  # typed-text supported-set gate at /api/ask
+    responses_book: Optional["ResponseBook"] = None  # for the pre-workflow refusal wording
 
     def __post_init__(self) -> None:
         if self.avatar is not None and self.video is None:
@@ -105,14 +111,15 @@ class Services:
         ``degraded``  nothing is rendering but some clips are missing (e.g. the Ditto worker died
                       or pre-render is off): those phrases render live with the concierge face
         """
-        if self.clips is None or self.clip_renderer is None or self.default_face is None:
+        if not self.clips or not self.clip_renderer or self.default_face is None:
             return None
         face = FaceRef(path=self.default_face, key=DEFAULT_FACE_KEY)
-        total = self.clips.total()
-        missing = len(self.clips.missing(face))
+        total = sum(cache.total() for cache in self.clips.values())
+        missing = sum(len(cache.missing(face)) for cache in self.clips.values())
+        busy = any(renderer.busy for renderer in self.clip_renderer.values())
         if missing == 0:
             state = "ready"
-        elif self.clip_renderer.busy:
+        elif busy:
             state = "warming"
         else:
             state = "degraded"
@@ -179,6 +186,7 @@ def build_services(settings: Optional["Settings"] = None) -> Services:
     from app.agents.guardrail import GuardrailResponses
     from app.agents.supervisor import LLMIntentClassifier
     from app.agents.tools import configure_search
+    from app.language.detector import LinguaLanguageDetector
     from app.retrieval.retrievers import HybridRetriever
     from app.retrieval.search import AirportSearch
     from app.retrieval.startup import validate_startup
@@ -193,14 +201,21 @@ def build_services(settings: Optional["Settings"] = None) -> Services:
     settings = settings or get_settings()
     validate_startup(settings)  # Cohere probe, Chroma, dimensions, BM25 - fail loudly
 
+    # Typed-text supported-set gate for /api/ask. Fail loudly if lingua can't build,
+    # consistent with the startup posture (don't serve a kiosk that can't detect language).
+    detector = LinguaLanguageDetector()
+
     retriever = HybridRetriever.from_settings(settings)
     search = AirportSearch(retriever, top_k=settings.answer_passages)
     # Wire the module-level ``search_airport`` @tool too, so it is usable outside the workflow.
     configure_search(search)
 
+    # One ResponseBook shared by the workflow AND the /api/ask refusal short-circuit.
+    responses_book = ResponseBook.from_file(settings.responses_path, settings.default_language)
+
     workflow = MultiAgentKioskWorkflow(
         router=Router.from_file(settings.policy_path, settings.default_language),
-        responses=ResponseBook.from_file(settings.responses_path, settings.default_language),
+        responses=responses_book,
         search=search,
         assessor=EvidenceAssessor(EvidenceThresholds.from_file(settings.evidence_thresholds_path)),
         generator=OpenAIAnswerGenerator(
@@ -225,9 +240,11 @@ def build_services(settings: Optional["Settings"] = None) -> Services:
         device=settings.whisper_device,
         compute_type=settings.whisper_compute_type,
         max_seconds=settings.max_audio_seconds,
-        language=settings.default_language,
+        language=None,  # multilingual auto-detect; the supported-set gate is at /api/ask
     )
-    synthesizer = KokoroSynthesizer(settings.kokoro_voice, settings.kokoro_lang)
+    synthesizer = KokoroSynthesizer(
+        i18n._PROFILES, default_language=settings.default_language
+    )
     logger.info("Loading speech models (first run downloads weights)...")
     transcriber.warm_up()
     synthesizer.warm_up()
@@ -249,21 +266,47 @@ def build_services(settings: Optional["Settings"] = None) -> Services:
     else:
         logger.warning("Avatar is OFF (AVATAR_ENABLED=false): answers are text and voice only, no video.")
 
-    clips: Optional[ClipCache] = None
-    clip_renderer: Optional[ClipRenderer] = None
+    clips: Optional[dict[str, ClipCache]] = None
+    clip_renderer: Optional[dict[str, ClipRenderer]] = None
     if avatar is not None and default_face is not None:
         from app.avatar.clips import file_digest, load_phrases
 
-        clips = ClipCache(
-            settings.clips_dir,
-            load_phrases(settings.responses_path, settings.default_language),
-            voice=settings.kokoro_voice,
-            language=settings.default_language,
-            default_digest=file_digest(default_face),
-        )
-        clip_renderer = ClipRenderer(clips, avatar, synthesizer)
+        digest = file_digest(default_face)
+        # One ClipCache + ClipRenderer per supported language. The three caches share
+        # the ``audio/`` and ``default-<digest>/`` dirs; phrase hashes are language-salted
+        # so files never collide, but each cache's startup purge must keep the OTHER
+        # languages' hashes (``extra_keep``) or it would delete their clips. Build the
+        # per-language phrase hash sets first, then pass each cache the union of the others.
+        per_lang_phrases = {
+            lang: load_phrases(settings.responses_path, lang)
+            for lang in settings.supported_languages
+        }
+        per_lang_hashes: dict[str, set[str]] = {}
+        for lang, phrases in per_lang_phrases.items():
+            voice = i18n.kokoro_voice_for(lang)
+            per_lang_hashes[lang] = {
+                hashlib.sha256(f"{lang}|{voice}|{text}".encode("utf-8")).hexdigest()[:16]
+                for text in phrases.values()
+            }
+        clips = {}
+        clip_renderer = {}
+        for lang, phrases in per_lang_phrases.items():
+            extra_keep = set().union(
+                *(h for other, h in per_lang_hashes.items() if other != lang)
+            ) if len(per_lang_hashes) > 1 else set()
+            cache = ClipCache(
+                settings.clips_dir,
+                phrases,
+                voice=i18n.kokoro_voice_for(lang),
+                language=lang,
+                default_digest=digest,
+                extra_keep=extra_keep,
+            )
+            clips[lang] = cache
+            clip_renderer[lang] = ClipRenderer(cache, avatar, synthesizer)
         if settings.clips_prerender_on_start:
-            clip_renderer.schedule(FaceRef(path=default_face, key=DEFAULT_FACE_KEY))
+            for renderer in clip_renderer.values():
+                renderer.schedule(FaceRef(path=default_face, key=DEFAULT_FACE_KEY))
 
     return Services(
         settings=settings,
@@ -275,4 +318,6 @@ def build_services(settings: Optional["Settings"] = None) -> Services:
         default_face=default_face,
         clips=clips,
         clip_renderer=clip_renderer,
+        detector=detector,
+        responses_book=responses_book,
     )

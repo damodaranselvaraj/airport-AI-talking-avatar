@@ -75,6 +75,14 @@ def test_health_reports_the_multi_agent_graph(build_services):
     assert {"workflow", "transcriber", "synthesizer", "evidence_calibrated"} <= set(comps)
 
 
-def test_legacy_workflow_health_has_no_agent_graph_key(build_services):
-    with TestClient(create_app(build_services())) as client:
+def test_a_workflow_without_graph_kind_has_no_agent_graph_key(build_services):
+    # health() only reports agent_graph when the workflow exposes a truthy graph_kind.
+    # A workflow without that attribute (e.g. a non-multi-agent/legacy one) omits the key.
+    class PlainWorkflow:
+        evidence_calibrated = True
+
+        def run(self, request):  # pragma: no cover - never invoked by /health
+            raise NotImplementedError
+
+    with TestClient(create_app(build_services(workflow=PlainWorkflow()))) as client:
         assert "agent_graph" not in client.get("/health").json()["components"]

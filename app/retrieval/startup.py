@@ -7,7 +7,7 @@ from typing import TYPE_CHECKING, Optional
 
 from app.retrieval.errors import StartupValidationError
 from app.retrieval.retrievers import CohereReranker
-from app.retrieval.sparse import Bm25Index
+from app.retrieval.sparse import Bm25Index, bm25_path_for
 from app.retrieval.store import ChromaStore
 
 if TYPE_CHECKING:
@@ -71,25 +71,39 @@ def validate_startup(settings: "Settings", reranker: Optional[CohereReranker] = 
         if store.count() <= 0:
             raise _fail(CHECK_CHROMA, f"collection '{settings.chroma_collection}' is empty")
         dims = store.collection_dimensions()
-        chroma_ids = store.ids()
     except StartupValidationError:
         raise
     except Exception as exc:
         raise _fail(CHECK_CHROMA, f"could not read collection: {exc!r}") from exc
 
+    # The embedding space is shared by all languages, so read one vector for the dims check.
     expected_dims = settings.openai_embedding_dims
     if dims != expected_dims:
         raise _fail(CHECK_DIMENSIONS, f"stored vectors have {dims} dims; expected {expected_dims}")
 
-    if not Path(settings.bm25_index_path).is_file():
-        raise _fail(CHECK_BM25, f"index file '{settings.bm25_index_path}' does not exist")
-    try:
-        bm25_ids = set(Bm25Index.load(settings.bm25_index_path).chunk_ids)
-    except Exception as exc:
-        raise _fail(CHECK_BM25, f"could not load index: {exc!r}") from exc
-    if bm25_ids != chroma_ids:
-        raise _fail(
-            CHECK_BM25,
-            f"ID set differs from Chroma (bm25_only={len(bm25_ids - chroma_ids)}, "
-            f"chroma_only={len(chroma_ids - bm25_ids)})",
-        )
+    # Per-language: the Chroma partition must be non-empty and its id set must match
+    # the matching per-language BM25 index exactly (strict isolation + no drift).
+    for lang in settings.supported_languages:
+        where = {"lang": lang}
+        try:
+            partition_count = store.count(where=where)
+        except Exception as exc:  # noqa: BLE001
+            raise _fail(CHECK_CHROMA, f"could not read partition '{lang}': {exc!r}") from exc
+        if partition_count <= 0:
+            raise _fail(CHECK_CHROMA, f"collection '{settings.chroma_collection}' has no '{lang}' chunks")
+
+        bm25_file = bm25_path_for(settings.bm25_index_path, lang)
+        if not Path(bm25_file).is_file():
+            raise _fail(CHECK_BM25, f"index file '{bm25_file}' for language '{lang}' does not exist")
+        try:
+            bm25_ids = set(Bm25Index.load(bm25_file).chunk_ids)
+        except Exception as exc:
+            raise _fail(CHECK_BM25, f"could not load index for '{lang}': {exc!r}") from exc
+
+        chroma_ids = store.ids(where=where)
+        if bm25_ids != chroma_ids:
+            raise _fail(
+                CHECK_BM25,
+                f"ID set for '{lang}' differs from Chroma "
+                f"(bm25_only={len(bm25_ids - chroma_ids)}, chroma_only={len(chroma_ids - bm25_ids)})",
+            )

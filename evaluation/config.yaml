@@ -1,0 +1,158 @@
+# =============================================================================
+# rag_evaluation / config.yaml
+# -----------------------------------------------------------------------------
+# Single configuration file shared by golden_dataset_generator.py, every
+# metrics/eval_*.py module and run_all_evaluations.py.
+#
+# SECRETS ARE NEVER STORED HERE. API keys are read from environment variables
+# (or a local .env file, see .env.example). Only the *names* of those variables
+# appear below. Any "${VAR}" or "${VAR:-default}" inside a string value is
+# expanded from the environment when the file is loaded.
+#
+# Quick provider swap without editing this file (environment overrides):
+#   RAG_EVAL_JUDGE_PROVIDER=anthropic RAG_EVAL_JUDGE_MODEL=claude-sonnet-4-5
+#   RAG_EVAL_EMBEDDING_PROVIDER=huggingface RAG_EVAL_EMBEDDING_MODEL=sentence-transformers/all-MiniLM-L6-v2
+# =============================================================================
+
+paths:
+  # Markdown source used by the golden dataset generator. Either one .md file
+  # or a directory that is searched recursively for *.md files.
+  data_source: C:\Users\damod\airport-AI-talking-avatar\airport-AI-talking-avatar\data\en\*.md
+  # Golden dataset produced by the generator and consumed by every metric.
+  golden_dataset: golden_dataset.json
+  # Every report (per-metric and summary) is written below this directory.
+  results_dir: results
+
+# -----------------------------------------------------------------------------
+# JUDGE LLM  -  used by the RAGAS LLM-based metrics (context precision/recall,
+# faithfulness, answer relevance). Faithfulness is the framework's
+# hallucination / factual-consistency judge, so swapping this block swaps the
+# judge for all of them at once.
+# -----------------------------------------------------------------------------
+judge_llm:
+  provider: openai            # openai | anthropic
+  model: gpt-4o-mini          # e.g. gpt-4o-mini, claude-sonnet-4-5
+  api_key_env: null           # null -> OPENAI_API_KEY / ANTHROPIC_API_KEY by provider
+  base_url: null              # optional OpenAI-compatible endpoint (openai only)
+  temperature: 0.0            # judges should be deterministic
+  max_tokens: 2048            # required by Anthropic; also caps OpenAI output
+  timeout_seconds: 120
+
+# -----------------------------------------------------------------------------
+# GENERATOR LLM  -  used by RAGAS TestsetGenerator (synthetic questions) and by
+# the "llm_baseline" answer provider. Defaults to the judge settings so a single
+# key is enough, but it can be pointed at a different (e.g. stronger) model.
+# -----------------------------------------------------------------------------
+generator_llm:
+  provider: openai
+  model: gpt-4o-mini
+  api_key_env: null
+  base_url: null
+  temperature: 0.2
+  max_tokens: 2048
+  timeout_seconds: 120
+
+# -----------------------------------------------------------------------------
+# EMBEDDINGS  -  used by TestsetGenerator and by the Answer Relevance metric.
+# Anthropic does not offer an embeddings API, so even with an Anthropic judge
+# the embeddings stay on openai or on a local huggingface model.
+# -----------------------------------------------------------------------------
+embeddings:
+  provider: openai            # openai | huggingface
+  model: text-embedding-3-small
+  api_key_env: null           # only used for provider=openai
+
+# -----------------------------------------------------------------------------
+# GOLDEN DATASET GENERATION
+# -----------------------------------------------------------------------------
+generation:
+  num_questions: 20
+  # Mix of question types. Values are weights and are re-normalised to sum to 1.
+  #   simple        -> RAGAS SingleHopSpecificQuerySynthesizer  (one chunk, one fact)
+  #   reasoning     -> RAGAS MultiHopAbstractQuerySynthesizer   (abstract, needs inference)
+  #   multi_context -> RAGAS MultiHopSpecificQuerySynthesizer   (facts from several chunks)
+  distribution:
+    simple: 0.5
+    reasoning: 0.25
+    multi_context: 0.25
+  # Split every .md file on #/##/### headings before RAGAS sees it. Leave false
+  # unless your files are large: RAGAS builds its own knowledge graph and needs
+  # reasonably long documents to link nodes for multi-hop questions.
+  split_by_headers: false
+  # How the `answer` and `contexts` fields are produced for each question:
+  #   llm_baseline -> contexts = RAGAS ground-truth chunks, answer = generator LLM
+  #                   answering only from them (a sanity-check upper bound).
+  #   kiosk_app    -> contexts + answer come from the real kiosk retriever/generator
+  #                   (see the kiosk_app block). Use this to measure the real system.
+  answer_provider: llm_baseline
+
+# -----------------------------------------------------------------------------
+# DATA VALIDATION applied to the dataset before it is exported
+# -----------------------------------------------------------------------------
+validation:
+  strict: false                    # true -> raise on the first invalid record instead of dropping it
+  near_duplicate_threshold: 0.92   # difflib ratio at/above which two questions are duplicates
+  drop_near_duplicates: true
+  min_question_chars: 8
+
+# -----------------------------------------------------------------------------
+# KIOSK APP ADAPTER  (answer_provider: kiosk_app)
+# -----------------------------------------------------------------------------
+kiosk_app:
+  root: ../kiosk                   # folder that contains the kiosk's app/ and config/ packages
+  top_k: 5                         # passages passed to the answer generator
+  fallback_answer: "I can't confirm that from the airport information I have."
+
+# -----------------------------------------------------------------------------
+# EVALUATION SETTINGS shared by the metric modules
+# -----------------------------------------------------------------------------
+evaluation:
+  concurrency: 4                   # parallel judge-LLM calls per metric
+  per_sample_timeout_seconds: 180
+  k_values: [1, 3, 5]              # cut-offs for Precision@K, Recall@K, NDCG@K, Hit@K
+
+  # How a retrieved context is judged "relevant" for the rank-based metrics
+  # (Precision@K, Recall@K, MRR, NDCG), which need relevance labels:
+  #   reference_contexts -> overlaps a ground-truth chunk
+  #   ground_truth       -> contains most of the content words of the reference answer
+  #   auto               -> reference_contexts when the sample has them, else ground_truth
+  relevance:
+    mode: auto
+    threshold: 0.6                 # minimum overlap score (0..1) to count as relevant
+
+  accuracy:
+    mode: f1                       # exact_match | contains | f1
+    f1_threshold: 0.5              # token-F1 needed to count an answer as correct (mode=f1)
+
+  answer_relevance:
+    strictness: 3                  # questions RAGAS generates from each answer
+
+  rouge:
+    types: [rouge1, rouge2, rougeL]
+    use_stemmer: true
+
+  bleu:
+    backend: sacrebleu             # sacrebleu | nltk
+    scale: unit                    # unit -> 0..1, percent -> 0..100
+
+  bertscore:
+    model_type: distilbert-base-uncased   # small + fast; use roberta-large for the paper default
+    lang: en
+    rescale_with_baseline: false
+    batch_size: 16
+    device: null                   # null -> auto (cuda if available)
+
+# -----------------------------------------------------------------------------
+# METRICS run by run_all_evaluations.py (override with --include / --exclude)
+# -----------------------------------------------------------------------------
+metrics:
+  context_precision: true
+  context_recall: true
+  mrr: true
+  ndcg: true
+  accuracy: true
+  answer_relevance: true
+  faithfulness: true
+  bleu: true
+  rouge: true
+  bertscore: true

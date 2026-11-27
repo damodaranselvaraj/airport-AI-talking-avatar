@@ -26,7 +26,62 @@
         "INPUT_TOO_LONG": "Please shorten your question and try again.",
         "PROMPT_INJECTION": "I can help with airport information, facilities, and passenger assistance.",
         "JAILBREAK": "I can help with airport information, facilities, and passenger assistance."
-      }
+      },
+      "unsupported_language": "I can help in English, Hindi, or Spanish."
+    },
+    "hi": {
+      "greeting": "नमस्ते, और Dam International Airport में आपका स्वागत है। मैं इमारत के अंदर गेट, भोजन, शौचालय, परिवहन और सेवाओं में मदद कर सकता हूँ। आप क्या जानना चाहेंगे?",
+      "thanks": "आपका स्वागत है। क्या कुछ और है जिसे ढूँढ़ने में मैं मदद कर सकता हूँ?",
+      "goodbye": "अलविदा, और आपकी यात्रा सुरक्षित रहे।",
+      "fallback": "मेरे पास मौजूद हवाई अड्डे की जानकारी से मैं इसकी पुष्टि नहीं कर सकता। कृपया प्रस्थान स्क्रीन देखें, या किसी सूचना डेस्क या अपनी एयरलाइन डेस्क पर पूछें।",
+      "error": "माफ़ कीजिए, मेरी ओर से कुछ गड़बड़ हो गई। कृपया फिर से कोशिश करें, या किसी सूचना डेस्क पर पूछें।",
+      "refusal": {
+        "flight_status": "मेरे पास लाइव उड़ान जानकारी नहीं है, इसलिए मैं उड़ान के समय या स्थिति की पुष्टि नहीं कर सकता। कृपया प्रस्थान स्क्रीन देखें या अपनी एयरलाइन डेस्क पर पूछें।",
+        "live_gate": "मेरे पास लाइव असाइनमेंट नहीं हैं, इसलिए मैं नहीं बता सकता कि कोई उड़ान आज कहाँ से जा रही है। कृपया प्रस्थान स्क्रीन देखें या अपनी एयरलाइन डेस्क पर पूछें।",
+        "visa": "मैं वीज़ा या प्रवेश नियमों पर सलाह नहीं दे सकता। यह आव्रजन का विषय है, इसलिए कृपया अपनी एयरलाइन डेस्क या किसी आव्रजन अधिकारी से पूछें।",
+        "fit_to_fly": "क्लिनिक छूटी हुई उड़ानों के लिए यात्रा-योग्यता पत्र जारी नहीं करता। यह एयरलाइन का निर्णय है, इसलिए कृपया अपनी एयरलाइन डेस्क से बात करें।",
+        "medical": "मैं चिकित्सा सलाह नहीं दे सकता। आपात स्थिति में, किसी पीले सहायता बिंदु का उपयोग करें या किसी कर्मचारी से पूछें, वे क्लिनिक को सूचित कर देंगे। क्लिनिक Terminal 2, Level 0, landside पर है और चौबीसों घंटे खुला रहता है।",
+        "fare": "मेरे पास कीमतें या किराए नहीं हैं, क्योंकि वे बदलते रहते हैं। कृपया संचालक या किसी सूचना डेस्क से पूछें।",
+        "rebook": "मैं उड़ानें बदल या बुक नहीं कर सकता, और सूचना डेस्क भी उड़ानें दोबारा बुक नहीं करते। कृपया अपनी एयरलाइन डेस्क से बात करें।",
+        "other_airport": "मेरे पास केवल Dam International Airport की जानकारी है, इसलिए मैं अन्य हवाई अड्डों में मदद नहीं कर सकता।",
+        "lost_aircraft": "विमान में छूटी हुई वस्तुओं को एयरलाइन संभालती है, इसलिए कृपया अपनी एयरलाइन डेस्क पर पूछें। मैं यह नहीं देख सकता कि आप कहाँ बैठे थे।",
+        "weather": "मेरे पास मौसम या संचालन की जानकारी नहीं है, इसलिए मैं नहीं कह सकता कि प्रस्थान प्रभावित होंगे या नहीं। कृपया प्रस्थान स्क्रीन देखें या अपनी एयरलाइन डेस्क पर पूछें।",
+        "out_of_scope": "मैं केवल Dam International Airport से जुड़े सवालों में मदद कर सकता हूँ, जैसे गेट, भोजन, शौचालय, परिवहन और सेवाएँ।"
+      },
+      "guardrail": {
+        "EMPTY_INPUT": "कृपया मुझसे हवाई अड्डे से जुड़ा कोई सवाल पूछें।",
+        "INPUT_TOO_LONG": "कृपया अपना सवाल छोटा करें और फिर से कोशिश करें।",
+        "PROMPT_INJECTION": "मैं हवाई अड्डे की जानकारी, सुविधाओं और यात्री सहायता में मदद कर सकता हूँ।",
+        "JAILBREAK": "मैं हवाई अड्डे की जानकारी, सुविधाओं और यात्री सहायता में मदद कर सकता हूँ।"
+      },
+      "unsupported_language": "मैं अंग्रेज़ी, हिंदी या स्पेनिश में मदद कर सकता हूँ।"
+    },
+    "es": {
+      "greeting": "Hola y bienvenido al Dam International Airport. Puedo ayudarte con puertas, comida, baños, transporte y servicios dentro del edificio. ¿Qué te gustaría saber?",
+      "thanks": "De nada. ¿Hay algo más que pueda ayudarte a encontrar?",
+      "goodbye": "Adiós, y que tengas un buen viaje.",
+      "fallback": "No puedo confirmarlo con la información del aeropuerto que tengo. Por favor consulta las pantallas de salidas, o pregunta en un mostrador de información o en el mostrador de tu aerolínea.",
+      "error": "Lo siento, algo salió mal por mi parte. Por favor inténtalo de nuevo, o pregunta en un mostrador de información.",
+      "refusal": {
+        "flight_status": "No tengo información de vuelos en tiempo real, así que no puedo confirmar horarios ni el estado de un vuelo. Por favor consulta las pantallas de salidas o pregunta en el mostrador de tu aerolínea.",
+        "live_gate": "No tengo asignaciones en tiempo real, así que no puedo decir desde dónde sale hoy un vuelo concreto. Por favor consulta las pantallas de salidas o pregunta en el mostrador de tu aerolínea.",
+        "visa": "No puedo asesorar sobre visados ni normas de entrada. Eso corresponde a inmigración, así que por favor pregunta en el mostrador de tu aerolínea o a un oficial de inmigración.",
+        "fit_to_fly": "La clínica no emite certificados de aptitud para volar por vuelos perdidos. Esa es una decisión de la aerolínea, así que por favor habla con el mostrador de tu aerolínea.",
+        "medical": "No puedo dar consejos médicos. En una emergencia, usa un punto de ayuda amarillo o pregunta a cualquier miembro del personal, y avisarán a la clínica. La clínica está en Terminal 2, Level 0, landside, y está abierta las 24 horas.",
+        "fare": "No tengo precios ni tarifas, porque cambian. Por favor pregunta al operador o en un mostrador de información.",
+        "rebook": "No puedo cambiar ni reservar vuelos, y los mostradores de información tampoco reprograman vuelos. Por favor habla con el mostrador de tu aerolínea.",
+        "other_airport": "Solo tengo información sobre el Dam International Airport, así que no puedo ayudar con otros aeropuertos.",
+        "lost_aircraft": "Los objetos olvidados en una aeronave los gestiona la aerolínea, así que por favor pregunta en el mostrador de tu aerolínea. No puedo averiguar dónde estabas sentado.",
+        "weather": "No tengo información meteorológica ni de operaciones, así que no puedo decir si las salidas se verán afectadas. Por favor consulta las pantallas de salidas o pregunta en el mostrador de tu aerolínea.",
+        "out_of_scope": "Solo puedo ayudar con preguntas sobre el Dam International Airport, como puertas, comida, baños, transporte y servicios."
+      },
+      "guardrail": {
+        "EMPTY_INPUT": "Por favor hazme una pregunta relacionada con el aeropuerto.",
+        "INPUT_TOO_LONG": "Por favor acorta tu pregunta e inténtalo de nuevo.",
+        "PROMPT_INJECTION": "Puedo ayudar con información del aeropuerto, instalaciones y asistencia al pasajero.",
+        "JAILBREAK": "Puedo ayudar con información del aeropuerto, instalaciones y asistencia al pasajero."
+      },
+      "unsupported_language": "Puedo ayudarte en inglés, hindi o español."
     }
   }
 }

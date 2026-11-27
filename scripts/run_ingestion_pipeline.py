@@ -33,12 +33,14 @@ from app.retrieval.embedding import DenseEmbedder  # noqa: E402
 from app.retrieval.ingestion import (  # noqa: E402
     IngestionAbortedError,
     IngestionRollbackError,
+    _restore_bm25_files,
     _restore_chroma,
+    _snapshot_bm25_files,
     assert_unique_chunk_ids,
 )
 from app.retrieval.manifest import ManifestValidator  # noqa: E402
 from app.retrieval.parsing import MarkdownParser  # noqa: E402
-from app.retrieval.sparse import Bm25Index  # noqa: E402
+from app.retrieval.sparse import Bm25Index, bm25_path_for  # noqa: E402
 from app.retrieval.store import ChromaStore  # noqa: E402
 from config.settings import get_settings  # noqa: E402
 
@@ -110,11 +112,19 @@ def main(argv: list[str] | None = None) -> int:
             )
         stage_done(4, f"Embedded {len(vectors)} chunk(s) with {settings.openai_embedding_model}", t)
 
-        # Snapshot Chroma so a failure in stage 5 or 6 can be rolled back.
+        # Group chunks by language for the per-language BM25 indexes.
+        languages = list(settings.supported_languages)
+        chunks_by_lang: dict[str, list] = {lang: [] for lang in languages}
+        for c in chunks:
+            chunks_by_lang.setdefault(c.metadata["lang"], []).append(c)
+
+        # Snapshot Chroma + every per-language BM25 file so a failure in stage 5 or 6
+        # can be rolled back for all indexes.
         store = ChromaStore(settings.chroma_dir, settings.chroma_collection)
         before_ids = store.ids()
         stale_ids = sorted(before_ids - set(ids))
         previous = store.get_records([i for i in ids if i in before_ids] + stale_ids)
+        bm25_snapshot = _snapshot_bm25_files(settings.bm25_index_path, languages)
 
         try:
             # Stage 5: ChromaDB insertion
@@ -128,37 +138,63 @@ def main(argv: list[str] | None = None) -> int:
                 t,
             )
 
-            # Stage 6: BM25 build + persist
+            # Stage 6: per-language BM25 build + persist
             t = time.perf_counter()
-            bm25 = Bm25Index()
-            bm25.build(ids, texts)
-            bm25.persist(settings.bm25_index_path)
-            stage_done(6, f"BM25 index built and saved to {settings.bm25_index_path}", t)
+            per_lang_counts = []
+            for lang in languages:
+                lang_chunks = chunks_by_lang.get(lang, [])
+                bm25 = Bm25Index()
+                bm25.build(
+                    [c.chunk_id for c in lang_chunks], [c.text for c in lang_chunks]
+                )
+                bm25.persist(bm25_path_for(settings.bm25_index_path, lang))
+                per_lang_counts.append(f"{lang}={len(lang_chunks)}")
+            stage_done(
+                6,
+                f"BM25 indexes built per language ({', '.join(per_lang_counts)}) "
+                f"under {settings.bm25_index_path}",
+                t,
+            )
         except Exception as exc:
             try:
                 _restore_chroma(store, before_ids, previous, ids)
+                _restore_bm25_files(settings.bm25_index_path, bm25_snapshot)
             except Exception as rollback_exc:
                 raise IngestionRollbackError(
-                    f"Ingestion failed ({exc!r}) and Chroma rollback failed "
+                    f"Ingestion failed ({exc!r}) and rollback failed "
                     f"({rollback_exc!r}); re-run ingestion to rebuild both indexes"
                 ) from exc
             raise IngestionAbortedError(
                 f"Ingestion aborted; both indexes left at pre-run state: {exc!r}"
             ) from exc
 
-        # Stage 7: parity verification
+        # Stage 7: per-language parity verification
         t = time.perf_counter()
-        chroma_ids = store.ids()
-        bm25_ids = Bm25Index.load(settings.bm25_index_path).chunk_ids
-        if chroma_ids != bm25_ids:
+        mismatched = []
+        parity_counts = []
+        for lang in languages:
+            chroma_lang_ids = store.ids(where={"lang": lang})
+            bm25_lang_ids = Bm25Index.load(
+                bm25_path_for(settings.bm25_index_path, lang)
+            ).chunk_ids
+            parity_counts.append(f"{lang}={len(chroma_lang_ids)}")
+            if chroma_lang_ids != bm25_lang_ids:
+                mismatched.append(
+                    f"{lang}: {len(chroma_lang_ids - bm25_lang_ids)} only in Chroma, "
+                    f"{len(bm25_lang_ids - chroma_lang_ids)} only in BM25"
+                )
+        if mismatched:
             print(
                 f"[FAIL] Stage 7/{TOTAL_STAGES} - Parity mismatch: "
-                f"{len(chroma_ids - bm25_ids)} only in Chroma, "
-                f"{len(bm25_ids - chroma_ids)} only in BM25",
+                + "; ".join(mismatched),
                 file=sys.stderr,
             )
             return 1
-        stage_done(7, f"Parity verified: ChromaDB and BM25 both hold {len(chroma_ids)} chunk ID(s)", t)
+        stage_done(
+            7,
+            f"Parity verified per language ({', '.join(parity_counts)} chunk ID(s))",
+            t,
+        )
 
     except Exception as exc:
         print(f"[FAIL] Ingestion failed: {exc}", file=sys.stderr)

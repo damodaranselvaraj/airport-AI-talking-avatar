@@ -50,6 +50,11 @@ soundfile==0.12.1
 # --- Traveler photos: decode, auto-rotate, strip metadata, re-encode to PNG ---
 Pillow==11.1.0
 
+# --- Language detection (offline) ---
+# Typed-text language detection for EN/HI/ES. Offline, keyless, bundles its own
+# models; accurate on short text for a small language set.
+lingua-language-detector==2.2.0
+
 # --- Testing ---
 pytest==8.3.4
 httpx==0.28.1

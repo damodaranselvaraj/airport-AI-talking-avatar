@@ -1,0 +1,123 @@
+{
+  "metric": "answer_relevance",
+  "headline": {
+    "name": "answer_relevance",
+    "value": 0.773875001044226
+  },
+  "aggregate": {
+    "answer_relevance": 0.773875001044226,
+    "answer_relevance_std": 0.20998464271706946,
+    "answer_relevance_min": 0.0,
+    "answer_relevance_max": 0.9736989909173732,
+    "count_scored": 19,
+    "count_failed": 0,
+    "count_skipped": 0
+  },
+  "metadata": {
+    "dataset": "golden_dataset.json",
+    "n_samples": 19,
+    "config": "C:\\Users\\damod\\airport-AI-talking-avatar\\airport-AI-talking-avatar\\evaluation\\config.yaml",
+    "duration_seconds": 99.202,
+    "python": "3.12.4",
+    "strictness": 3,
+    "judge": "gpt-4o-mini",
+    "embeddings": "text-embedding-3-small"
+  },
+  "per_sample": [
+    {
+      "index": 0,
+      "question": "What are the key details regarding Concourse C at the airport, particularly in relation to Gate C22?",
+      "answer_relevance": 0.7139401180900263
+    },
+    {
+      "index": 1,
+      "question": "Whaer is the gate for Sahara Jet at DIA?",
+      "answer_relevance": 0.9588793977826047
+    },
+    {
+      "index": 2,
+      "question": "What last call time for flights at DIA?",
+      "answer_relevance": 0.8922321321669138
+    },
+    {
+      "index": 3,
+      "question": "What should passengers expect when boarding from gate B28 at Dam International Airport, and how should they prepare for the boarding process?",
+      "answer_relevance": 0.7927091084744383
+    },
+    {
+      "index": 4,
+      "question": "Wut flights are at gate B29?",
+      "answer_relevance": 0.0
+    },
+    {
+      "index": 5,
+      "question": "What about B30 gate for boarding?",
+      "answer_relevance": 0.8330951171934396
+    },
+    {
+      "index": 6,
+      "question": "What airlines operate in Terminal 2 at Dam International Airport, specifically including Horizon Air?",
+      "answer_relevance": 0.8070525723908437
+    },
+    {
+      "index": 7,
+      "question": "What is the layout and function of the terminals at Dam International Airport?",
+      "answer_relevance": 0.8629637752924552
+    },
+    {
+      "index": 8,
+      "question": "Which terminal at Dam International Airport does Sahara Jet operate from?",
+      "answer_relevance": 0.9736989909173732
+    },
+    {
+      "index": 9,
+      "question": "What steps should a traveler take to verify flight information at the airline desk and ensure timely boarding at Gate C22, considering the last call policy and potential bus boarding at other gates?",
+      "answer_relevance": 0.6974635263334982
+    },
+    {
+      "index": 10,
+      "question": "What is the concourse information for boarding by bus at the airport, and how does it relate to the nearest gates and their respective amenities?",
+      "answer_relevance": 0.6115307165025242
+    },
+    {
+      "index": 11,
+      "question": "What concourse information should I know about boarding by bus at the airport, specifically regarding gates B28, B29, B30, and D16, D17, D18?",
+      "answer_relevance": 0.626096438919394
+    },
+    {
+      "index": 12,
+      "question": "How much extra time should a traveler allow when boarding from bus gates B28, B29, B30, and D16, D17, D18 compared to the regular travel time from security to gate C22?",
+      "answer_relevance": 0.9062045444139498
+    },
+    {
+      "index": 13,
+      "question": "How can I verify flight information at the airline desk and what should I consider regarding last call and bus boarding gates?",
+      "answer_relevance": 0.6899132824356955
+    },
+    {
+      "index": 14,
+      "question": "What are the check-in procedures and gate information for Cedar Pacific at Dam International Airport?",
+      "answer_relevance": 0.7914833948449975
+    },
+    {
+      "index": 15,
+      "question": "Wht terminal is Cedar Pacific in and how long does it take to get to gate C22?",
+      "answer_relevance": 0.8834768621215926
+    },
+    {
+      "index": 16,
+      "question": "What terminal does Sandpiper operate from at Dam International Airport, and what are the gate details associated with it?",
+      "answer_relevance": 0.9232169945943983
+    },
+    {
+      "index": 17,
+      "question": "What gates does Pearl Wings use at Dam International Airport and how long does it take to walk from T1 to those gates?",
+      "answer_relevance": 0.8337557021185944
+    },
+    {
+      "index": 18,
+      "question": "Wht are the check-in and boarding procedures for Sahara Jet at Dam International Airport?",
+      "answer_relevance": 0.905912345247556
+    }
+  ]
+}

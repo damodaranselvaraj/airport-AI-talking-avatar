@@ -49,7 +49,7 @@ def load_phrases(responses_path: str | Path, language: str = "en") -> dict[str, 
     data = json.loads(Path(responses_path).read_text(encoding="utf-8"))
     block = data["languages"][language]
     flat: dict[str, str] = {}
-    for name in ("greeting", "thanks", "goodbye", "fallback"):
+    for name in ("greeting", "thanks", "goodbye", "fallback", "unsupported_language"):
         if isinstance(block.get(name), str) and block[name].strip():
             flat[name] = block[name].strip()
     for name, text in (block.get("refusal") or {}).items():
@@ -75,12 +75,18 @@ class ClipCache:
         voice: str,
         language: str,
         default_digest: str,
+        extra_keep: Optional[set[str]] = None,
     ) -> None:
         self._root = Path(root)
         self._phrases = dict(phrases)
         self._voice = voice
         self._lang = language
         self._default_dir = f"default-{default_digest}"
+        # Phrase hashes are salted by (language, voice, text), so every language's
+        # caches share the ``audio/`` and ``default-<digest>/`` dirs with disjoint
+        # hash sets. ``extra_keep`` carries the OTHER languages' hashes so this
+        # cache's startup purge never deletes their audio/clip files.
+        self._extra_keep = set(extra_keep or ())
         self._by_hash = {self.phrase_hash(text): text for text in self._phrases.values()}
         # One entry per distinct text (the first name wins), in priority order.
         seen: set[str] = set()
@@ -95,6 +101,10 @@ class ClipCache:
         self.purge_stale()
 
     # ----------------------------------------------------------------- keys
+    @property
+    def language(self) -> str:
+        return self._lang
+
     def phrase_hash(self, text: str) -> str:
         return hashlib.sha256(f"{self._lang}|{self._voice}|{text}".encode("utf-8")).hexdigest()[:16]
 
@@ -150,7 +160,7 @@ class ClipCache:
         for entry in self._root.iterdir():
             if entry.is_dir() and entry.name.startswith("default-") and entry.name != self._default_dir:
                 shutil.rmtree(entry, ignore_errors=True)
-        keep = set(self._by_hash)
+        keep = set(self._by_hash) | self._extra_keep
         current = self._root / self._default_dir
         if current.is_dir():
             for f in current.iterdir():
@@ -162,7 +172,7 @@ class ClipCache:
 
 
 class _Synthesizer(Protocol):
-    def synthesize(self, text: str) -> bytes: ...
+    def synthesize(self, text: str, language: str = "en") -> bytes: ...
 
 
 class _Avatar(Protocol):
@@ -224,7 +234,7 @@ class ClipRenderer:
         path = self._cache.wav_path(text)
         if path.is_file():
             return path
-        data = self._synth.synthesize(text)
+        data = self._synth.synthesize(text, self._cache.language)
         part = path.with_suffix(".part")
         part.write_bytes(data)
         os.replace(part, path)

@@ -5,6 +5,8 @@ import json
 from pathlib import Path
 from typing import Any
 
+from app import i18n
+
 
 class ManifestError(ValueError):
     """The manifest is missing, invalid, or references unusable paths."""
@@ -60,6 +62,25 @@ class ManifestValidator:
             return entry["source"]
         raise ManifestError(f"Unsupported manifest entry: {entry!r}")
 
+    @staticmethod
+    def _entry_lang(entry: Any) -> str:
+        """The validated ``lang`` of a manifest entry.
+
+        All real entries are dicts carrying a per-entry ``lang``; a bare string
+        has no language and cannot be partitioned, so it is rejected (fail loudly).
+        """
+        if not isinstance(entry, dict):
+            raise ManifestError(
+                f"Manifest entry has no 'lang' (bare string not allowed): {entry!r}"
+            )
+        lang = entry.get("lang")
+        if not isinstance(lang, str) or lang not in i18n.SUPPORTED:
+            raise ManifestError(
+                f"Manifest entry {entry!r} has missing/unsupported lang {lang!r}; "
+                f"supported: {i18n.SUPPORTED}"
+            )
+        return lang
+
     def _ensure_loaded(self) -> None:
         if self._includes is not None and self._excluded is not None:
             return
@@ -96,6 +117,31 @@ class ManifestValidator:
                 continue
             seen.add(path)
             result.append(path)
+        return result
+
+    def entries(self) -> list[tuple[Path, str]]:
+        """``(resolved_path, lang)`` for every eligible (non-excluded) document.
+
+        Built from the same resolution logic as ``eligible_files``. Raises
+        ``ManifestError`` if any eligible entry's ``lang`` is missing or not in
+        ``app.i18n.SUPPORTED`` (fail loudly).
+        """
+        self._ensure_loaded()
+        assert self._excluded is not None
+        data = self._load()
+        raw_entries = data.get("documents", data.get("include"))
+        if not isinstance(raw_entries, list):
+            raise ManifestError(
+                f"Manifest at {self._manifest_path} has no 'documents' list"
+            )
+        seen: set[Path] = set()
+        result: list[tuple[Path, str]] = []
+        for entry in raw_entries:
+            path = self._resolve(self._entry_path(entry))
+            if path in self._excluded or path in seen:
+                continue
+            seen.add(path)
+            result.append((path, self._entry_lang(entry)))
         return result
 
     def is_excluded(self, path: Path) -> bool:

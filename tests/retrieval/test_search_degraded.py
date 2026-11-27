@@ -1,7 +1,7 @@
 """Tests for retrieval degradation signaling through the service layer."""
 from app.retrieval.search import AirportSearch
 from app.workflow.contracts import ErrorState, RetrievedPassage
-from tests.fakes import GATE_C22
+from tests.fakes import GATE_C22, FakeRetriever
 
 
 class FakeRetrieverWithDegradation:
@@ -13,9 +13,24 @@ class FakeRetrieverWithDegradation:
         self.last_degraded = degraded if degraded is not None else []
         self.calls = []
 
-    def retrieve_with_status(self, query, top_k):
+    def retrieve_with_status(self, query, top_k, language="en"):
         self.calls.append(query)
         return list(self.passages)[:top_k], self.error
+
+
+def test_search_airport_threads_language_to_the_retriever():
+    """AirportSearch.search_airport forwards the language to retrieve_with_status."""
+    retriever = FakeRetriever([GATE_C22])
+    search = AirportSearch(retriever, top_k=5)
+    search.search_airport("गेट सी22 कहाँ है?", "hi")
+    assert retriever.languages == ["hi"]
+
+
+def test_search_airport_language_defaults_to_en():
+    retriever = FakeRetriever([GATE_C22])
+    search = AirportSearch(retriever, top_k=5)
+    search.search_airport("where is gate C22?")
+    assert retriever.languages == ["en"]
 
 
 def test_degraded_retrieval_signals_correctly():

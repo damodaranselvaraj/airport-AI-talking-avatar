@@ -11,6 +11,7 @@ EXPECTED_KEYS = {
     "decision",
     "passages",
     "rerank_applied",
+    "retrieval_degraded",
     "tier",
     "generated",
     "cited",

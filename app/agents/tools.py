@@ -36,9 +36,9 @@ def configure_search(search: Optional[AirportSearch]) -> None:
     _search = search
 
 
-def _run_search(search: AirportSearch, query: str) -> dict:
+def _run_search(search: AirportSearch, query: str, language: str = "en") -> dict:
     """Run the hybrid search and return plain, JSON-friendly dicts (shared by both tool forms)."""
-    found = search.search_airport(query)
+    found = search.search_airport(query, language)
     return {
         "passages": [
             {"chunk_id": p.chunk_id, "text": p.text, "source": p.source, "score": p.score}
@@ -52,28 +52,29 @@ def _run_search(search: AirportSearch, query: str) -> dict:
 
 
 @tool
-def search_airport(query: str) -> dict:
+def search_airport(query: str, language: str = "en") -> dict:
     """Search the approved airport documents for passages relevant to the passenger's question.
 
     Returns the best reranked passages (chunk_id, text, source, score) and whether the Cohere
-    rerank was applied. Raises RuntimeError if the retriever has not been configured.
+    rerank was applied. ``language`` scopes retrieval to that language's passages. Raises
+    RuntimeError if the retriever has not been configured.
     """
     if _search is None:
         # Fail loudly: a missing retriever is a wiring bug, not a runtime condition to hide.
         raise RuntimeError("search_airport is not configured; call configure_search() at startup")
-    return _run_search(_search, query)
+    return _run_search(_search, query, language)
 
 
 def make_search_tool(search: AirportSearch) -> BaseTool:
     """Return a ``search_airport`` tool bound to ``search`` (no module-level state involved)."""
 
     @tool("search_airport")
-    def bound_search_airport(query: str) -> dict:
+    def bound_search_airport(query: str, language: str = "en") -> dict:
         """Search the approved airport documents for passages relevant to the passenger's question.
 
         Returns the best reranked passages (chunk_id, text, source, score) and whether the Cohere
-        rerank was applied.
+        rerank was applied. ``language`` scopes retrieval to that language's passages.
         """
-        return _run_search(search, query)
+        return _run_search(search, query, language)
 
     return bound_search_airport

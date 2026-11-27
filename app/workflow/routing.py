@@ -13,21 +13,29 @@ from __future__ import annotations
 
 import json
 import re
+import unicodedata
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
 
 from app.workflow.contracts import Route
 
-_PUNCT_RE = re.compile(r"[^\w\s'\-]")
 _SPACE_RE = re.compile(r"\s+")
 
 
 def normalize(text: str) -> str:
-    """Lower-case, drop punctuation, collapse whitespace (apostrophes removed)."""
+    """Lower-case, drop punctuation, collapse whitespace (apostrophes removed).
+
+    Only Unicode punctuation/symbol characters (categories ``P*``/``S*``) are
+    stripped; letters and combining marks (``Mn``/``Mc``) are kept, so Devanagari
+    matras survive (``normalize("गेट C22 कहाँ है?")`` keeps ``गेट``/``कहाँ`` intact).
+    ASCII output is unchanged because ASCII punctuation is category ``P*``.
+    """
     lowered = text.lower().replace("\u2019", "'").replace("'", "")
-    lowered = _PUNCT_RE.sub(" ", lowered).replace("-", " ")
-    return _SPACE_RE.sub(" ", lowered).strip()
+    stripped = "".join(
+        " " if unicodedata.category(ch)[0] in ("P", "S") else ch for ch in lowered
+    ).replace("-", " ")
+    return _SPACE_RE.sub(" ", stripped).strip()
 
 
 @dataclass(frozen=True)
@@ -110,6 +118,13 @@ class ResponseBook:
 
     def error(self, language: str = "en") -> str:
         return self._block(language).get("error") or self._langs[self._default]["error"]
+
+    def unsupported_language(self, language: str = "en") -> str:
+        """The polite refusal shown when the detected language is not supported."""
+        return (
+            self._block(language).get("unsupported_language")
+            or self._langs[self._default]["unsupported_language"]
+        )
 
     def all_strings(self) -> list[str]:
         """Every approved string (used by tests that check wording against trap rules)."""

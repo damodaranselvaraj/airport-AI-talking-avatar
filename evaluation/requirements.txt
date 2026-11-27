@@ -1,0 +1,40 @@
+# =============================================================================
+# rag_evaluation - pinned dependencies (Python 3.10 - 3.12)
+# Install:  python -m venv .venv && source .venv/bin/activate && pip install -r requirements.txt
+# =============================================================================
+
+# --- Evaluation libraries -----------------------------------------------------
+ragas==0.4.3             # LLM-judged metrics + TestsetGenerator (synthetic golden data)
+datasets==4.4.1        # Hugging Face datasets (RAGAS dependency; JSON Lines export format)
+nltk==3.10.4             # BLEU (nltk back-end)
+sacrebleu==2.6.0         # BLEU (default back-end)
+rouge-score==0.1.2       # ROUGE
+bert-score==0.3.13       # BERTScore
+torch==2.9.1             # bert-score runtime (CPU or CUDA build; see README for a CPU-only install)
+transformers==4.57.6     # bert-score encoder models (bert-score 0.3.13 predates transformers 5.x)
+
+# --- Numerics (versions that still support Python 3.10) -------------------------
+numpy==2.2.6
+scipy==1.15.3
+scikit-learn==1.7.2      # ndcg_score, accuracy_score
+pandas==2.3.3
+
+# --- Configuration -------------------------------------------------------------
+PyYAML==6.0.3
+python-dotenv==1.2.4
+
+# --- LLM providers / LangChain -------------------------------------------------
+# RAGAS 0.4.3 imports langchain_community.chat_models.vertexai, which langchain-community 0.4+
+# removed, so the LangChain 0.3 line is pinned deliberately.
+openai==1.109.1
+anthropic==0.125.0
+instructor==1.3.2        # structured output used by RAGAS llm_factory
+langchain==0.3.30
+langchain-core==0.3.86
+langchain-community==0.3.31
+langchain-text-splitters==0.3.11
+langchain-openai==0.3.35
+langchain-anthropic==0.3.22
+
+# --- Tests (optional) ------------------------------------------------------------
+pytest==9.1.1

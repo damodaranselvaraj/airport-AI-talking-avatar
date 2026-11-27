@@ -7,6 +7,7 @@ import wave
 from pathlib import Path
 from typing import Optional, Sequence
 
+from app.language.detector import DetectionResult
 from app.workflow.answer import GeneratedAnswer
 from app.workflow.contracts import ErrorState, RetrievedPassage, Transcript
 
@@ -44,10 +45,12 @@ class FakeRetriever:
         self.error = error
         self.raises = raises
         self.calls: list[str] = []
+        self.languages: list[Optional[str]] = []
         self.last_degraded = degraded if degraded is not None else []
 
-    def retrieve_with_status(self, query: str, top_k: int):
+    def retrieve_with_status(self, query: str, top_k: int, language: Optional[str] = None):
         self.calls.append(query)
+        self.languages.append(language)
         if self.raises:
             raise self.raises
         return list(self.passages)[:top_k], self.error
@@ -77,6 +80,18 @@ class FakeGenerator:
             raise self.raises
         return self.answer
 
+
+
+class FakeDetector:
+    """Scripted language detector. Returns a fixed ``DetectionResult`` and records calls."""
+
+    def __init__(self, code: str = "en", is_supported: bool = True) -> None:
+        self.result = DetectionResult(code, is_supported)
+        self.texts: list[str] = []
+
+    def detect(self, text: str) -> DetectionResult:
+        self.texts.append(text)
+        return self.result
 
 
 class FakeTranscriber:
@@ -110,9 +125,11 @@ class FakeSynthesizer:
     def __init__(self, raises: Optional[Exception] = None) -> None:
         self.raises = raises
         self.texts: list[str] = []
+        self.languages: list[str] = []
 
-    def synthesize(self, text: str) -> bytes:
+    def synthesize(self, text: str, language: str = "en") -> bytes:
         self.texts.append(text)
+        self.languages.append(language)
         if self.raises:
             raise self.raises
         return silent_wav()

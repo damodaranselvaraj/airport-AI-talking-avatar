@@ -35,6 +35,7 @@ from fastapi import APIRouter, BackgroundTasks, File, HTTPException, Request, Up
 from fastapi.responses import FileResponse, JSONResponse
 from pydantic import BaseModel, Field, field_validator
 
+from app import i18n
 from app.audio_store import AudioState
 from app.avatar.models import DEFAULT_FACE_KEY, FaceRef, JobOutcome, Priority, QueueFull
 from app.services import Services
@@ -45,6 +46,7 @@ from app.speech_to_text.errors import (
 )
 from app.tracing import child_span, close_child_span, open_child_span, turn_trace
 from app.workflow.contracts import (
+    AnswerResult,
     Citation,
     EvidenceTier,
     InputType,
@@ -119,11 +121,13 @@ def render_audio(
     text: str,
     cached_wav: Optional[Path] = None,
     parent_run: Optional[Any] = None,
+    language: str = "en",
 ) -> bool:
     """Synthesize the approved text (or reuse its cached audio). Failure degrades to captions only.
 
     When ``parent_run`` is a live RunTree, a ``kokoro_tts`` child span is posted
-    to LangSmith with text length, voice, and output audio size.
+    to LangSmith with text length, voice, and output audio size. ``language`` is
+    the per-turn governing language and selects the Kokoro voice/pipeline.
     """
     try:
         if cached_wav is not None and cached_wav.is_file():
@@ -137,11 +141,11 @@ def render_audio(
                 "tool",
                 {
                     "text_chars": len(text),
-                    "voice": services.settings.kokoro_voice,
-                    "lang": services.settings.kokoro_lang,
+                    "voice": i18n.kokoro_voice_for(language),
+                    "lang": i18n.kokoro_lang_code_for(language),
                 },
             ) as span:
-                wav = services.synthesizer.synthesize(text)  # type: ignore[union-attr]
+                wav = services.synthesizer.synthesize(text, language)  # type: ignore[union-attr]
                 if span is not None:
                     try:
                         span.end(outputs={"audio_bytes": len(wav), "source": "live_synthesis"})
@@ -245,14 +249,15 @@ def render_turn(
     face: Optional[FaceRef],
     cached_wav: Optional[Path] = None,
     parent_run: Optional[Any] = None,
+    language: str = "en",
 ) -> None:
     """Background task: speak the approved text, then (if wanted) animate the face to it.
 
     ``parent_run`` is the RunTree from the ask_turn trace (may be None when tracing
     is off). Passed through to render_audio and submit_video so their child spans
-    attach to the correct parent via create_child().
+    attach to the correct parent via create_child(). ``language`` selects the voice.
     """
-    spoken = render_audio(services, turn_id, text, cached_wav, parent_run)
+    spoken = render_audio(services, turn_id, text, cached_wav, parent_run, language)
     if face is None or services.video is None:
         return
     if not spoken:
@@ -274,14 +279,24 @@ def concierge_face(services: Services) -> Optional[FaceRef]:
     return FaceRef(path=services.default_face, key=DEFAULT_FACE_KEY)
 
 
-def is_fixed_phrase(services: Services, status: ResponseStatus, text: str) -> bool:
+def clip_cache(services: Services, language: str):
+    """The per-language ``ClipCache`` for ``language``, or ``None`` when there are no clips."""
+    if not services.clips:
+        return None
+    return services.clips.get(language)
+
+
+def is_fixed_phrase(services: Services, status: ResponseStatus, text: str, language: str = "en") -> bool:
     """Greetings, policy refusals, the safe fallback and guardrail blocks: approved wording, not an answer."""
     if status is not ResponseStatus.ANSWERED:
         return True
-    return services.clips is not None and services.clips.is_phrase(text)
+    cache = clip_cache(services, language)
+    return cache is not None and cache.is_phrase(text)
 
 
-def face_for_turn(services: Services, session_id: str, status: ResponseStatus, text: str) -> Optional[FaceRef]:
+def face_for_turn(
+    services: Services, session_id: str, status: ResponseStatus, text: str, language: str = "en"
+) -> Optional[FaceRef]:
     """The face that speaks this turn.
 
     Fixed phrases always use the default concierge (pre-rendered, or rendered live if the clip is
@@ -290,11 +305,27 @@ def face_for_turn(services: Services, session_id: str, status: ResponseStatus, t
     """
     if services.avatar is None or services.video is None:
         return None
-    if not is_fixed_phrase(services, status, text) and services.faces is not None:
+    if not is_fixed_phrase(services, status, text, language) and services.faces is not None:
         custom = services.faces.get(session_id)
         if custom is not None:
             return custom
     return concierge_face(services)
+
+
+def _detect_language(services: Services, text: str) -> "DetectionResult":
+    """Detect the governing language of the final box text. A detector failure is
+    treated as unsupported (refusal), never a 500, and never leaks exception text."""
+    from app.language.detector import DetectionResult
+
+    if services.detector is None:
+        # No detector wired (e.g. a minimal test container): treat as the default,
+        # supported language so behavior matches the single-language kiosk.
+        return DetectionResult(services.settings.default_language, True)
+    try:
+        return services.detector.detect(text)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("language detection failed: %s", type(exc).__name__)
+        return DetectionResult(services.settings.default_language, False)
 
 
 @router.post("/ask", response_model=AskResponse)
@@ -305,54 +336,92 @@ def ask(body: AskBody, request: Request, background: BackgroundTasks) -> AskResp
     if len(body.text) > services.settings.max_question_chars:
         raise HTTPException(status_code=422, detail={"code": "too_long", "message": "Question is too long."})
 
-    # ------------------------------------------------------------------ tracing
-    # Open the top-level ask_turn trace. LangGraph/LangChain calls made inside
-    # the with-block auto-attach as children via the ambient LangSmith context.
-    # The RunTree stays valid after the context exits (id, trace_id, dotted_order
-    # remain in memory). We capture it inside the block and pass it to the
-    # background task so render_audio and submit_video can call create_child(),
-    # which correctly inherits the parent's dotted_order for child-run validation.
+    # ---------------------------------------------- language detection gate
+    # The governing language of the turn is decided here, server-side, from the
+    # final text in the box, overriding the inbound (untrusted) body.language.
+    det = _detect_language(services, body.text)
+
     parent_run: Optional[Any] = None
-    with turn_trace(
-        "ask_turn",
-        inputs={
-            "session_id": body.session_id,
-            "question_chars": len(body.text),
-            "input_type": body.input_type.value,
-            "language": body.language,
-        },
-    ) as run:
-        # ---------------------------------------------------------- workflow
-        outcome = services.workflow.run(
-            KioskRequest(
-                session_id=body.session_id,
-                text=body.text,
-                input_type=body.input_type,
-                language=body.language,
-            )
+    if not det.is_supported:
+        # Refusal short-circuit: NO workflow, NO retrieval, NO citations. The
+        # polite refusal is spoken in the default language (en). It is a fixed
+        # phrase (``unsupported_language`` in the catalog), so the normal media
+        # path can serve its pre-rendered en clip / cached wav.
+        lang = services.settings.default_language
+        text = (
+            services.responses_book.unsupported_language(lang)
+            if services.responses_book is not None
+            else "I can help in English, Hindi, or Spanish."
         )
-        # Record workflow-level metadata on the trace (best-effort).
-        if run is not None:
-            try:
-                run.add_metadata({
-                    "route": outcome.trace.route.value if outcome.trace.route else None,
-                    "evidence_tier": (
-                        outcome.trace.evidence_tier.value
-                        if outcome.trace.evidence_tier else None
-                    ),
-                    "status": outcome.result.status.value,
-                    "workflow_latency_ms": outcome.trace.latency_ms,
-                    "guardrail_reason": outcome.trace.guardrail_reason,
-                    "error_stage": outcome.trace.error_stage,
-                })
-            except Exception:
-                pass
-        # Capture INSIDE the with-block so the RunTree is available for
-        # background task child spans after the context exits.
-        parent_run = run
+        result = AnswerResult(
+            session_id=body.session_id,
+            status=ResponseStatus.REFUSED,
+            text=text,
+            citations=[],
+            language=lang,
+            spoken=True,
+        )
+        with turn_trace(
+            "ask_turn",
+            inputs={
+                "session_id": body.session_id,
+                "question_chars": len(body.text),
+                "input_type": body.input_type.value,
+                "language": lang,
+                "unsupported_language": True,
+            },
+        ) as run:
+            parent_run = run
+    else:
+        language = det.code  # supported: en|hi|es
+
+        # ------------------------------------------------------------- tracing
+        # Open the top-level ask_turn trace. LangGraph/LangChain calls made inside
+        # the with-block auto-attach as children via the ambient LangSmith context.
+        # The RunTree stays valid after the context exits (id, trace_id, dotted_order
+        # remain in memory). We capture it inside the block and pass it to the
+        # background task so render_audio and submit_video can call create_child(),
+        # which correctly inherits the parent's dotted_order for child-run validation.
+        with turn_trace(
+            "ask_turn",
+            inputs={
+                "session_id": body.session_id,
+                "question_chars": len(body.text),
+                "input_type": body.input_type.value,
+                "language": language,
+            },
+        ) as run:
+            # ------------------------------------------------------ workflow
+            outcome = services.workflow.run(
+                KioskRequest(
+                    session_id=body.session_id,
+                    text=body.text,
+                    input_type=body.input_type,
+                    language=language,  # the detected code, overriding body.language
+                )
+            )
+            # Record workflow-level metadata on the trace (best-effort).
+            if run is not None:
+                try:
+                    run.add_metadata({
+                        "route": outcome.trace.route.value if outcome.trace.route else None,
+                        "evidence_tier": (
+                            outcome.trace.evidence_tier.value
+                            if outcome.trace.evidence_tier else None
+                        ),
+                        "status": outcome.result.status.value,
+                        "workflow_latency_ms": outcome.trace.latency_ms,
+                        "guardrail_reason": outcome.trace.guardrail_reason,
+                        "error_stage": outcome.trace.error_stage,
+                    })
+                except Exception:
+                    pass
+            # Capture INSIDE the with-block so the RunTree is available for
+            # background task child spans after the context exits.
+            parent_run = run
+        result = outcome.result
 
     # ------------------------------------------------------------------ media
-    result = outcome.result
     turn_id = services.audio.new_turn_id()
     audio_url: Optional[str] = None
     video_url: Optional[str] = None
@@ -361,12 +430,13 @@ def ask(body: AskBody, request: Request, background: BackgroundTasks) -> AskResp
     if result.spoken and services.synthesizer is not None:
         services.audio.begin(turn_id)
         audio_url = f"/api/audio/{turn_id}"
-        face = face_for_turn(services, body.session_id, result.status, result.text)
-        cached_wav = services.clips.cached_wav(result.text) if services.clips is not None else None
+        cache = clip_cache(services, result.language)
+        face = face_for_turn(services, body.session_id, result.status, result.text, result.language)
+        cached_wav = cache.cached_wav(result.text) if cache is not None else None
         inline_audio = False
         media, reason = "audio_only", "no_avatar"
         if face is not None:
-            clip = services.clips.lookup(face, result.text) if services.clips is not None else None
+            clip = cache.lookup(face, result.text) if cache is not None else None
             if clip is not None:
                 # A fixed phrase for this face: its video already exists, so serve it now,
                 # together with its cached audio (a file copy), so text, voice and video are ready at once.
@@ -399,11 +469,11 @@ def ask(body: AskBody, request: Request, background: BackgroundTasks) -> AskResp
                 media, reason = "live_render", "ok"
         if inline_audio:
             # Cached clip audio — no TTS span needed.
-            render_audio(services, turn_id, result.text, cached_wav)
+            render_audio(services, turn_id, result.text, cached_wav, language=result.language)
         else:
             # Pass the RunTree so TTS and Ditto render attach as children via create_child().
             background.add_task(
-                render_turn, services, turn_id, result.text, face, cached_wav, parent_run
+                render_turn, services, turn_id, result.text, face, cached_wav, parent_run, result.language
             )
     logger.info("ask turn=%s media=%s reason=%s", turn_id, media, reason)
     return AskResponse(
@@ -575,6 +645,7 @@ async def transcribe(request: Request, audio: UploadFile = File(...)):
                     "transcript_chars": len(transcript.text),
                     "duration_s": transcript.duration_s,
                     "confidence": transcript.confidence,
+                    "language": transcript.language,  # the detected code, best-effort metadata
                 })
             except Exception:
                 pass

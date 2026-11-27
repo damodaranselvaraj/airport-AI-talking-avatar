@@ -1,0 +1,231 @@
+================================================================================
+RAG PIPELINE FLOW - Airport AI Talking Avatar
+================================================================================
+Traced from source. Two phases: (A) OFFLINE INGESTION builds the indexes,
+(B) ONLINE QUERY answers a traveler's question at runtime.
+
+Languages supported: en, hi, es  (indexes are partitioned per language)
+Config source of truth: config/settings.py
+
+
+================================================================================
+PHASE A - OFFLINE INGESTION  (build the knowledge indexes)
+================================================================================
+Orchestrated by: app/retrieval/ingestion.py -> run_ingestion()
+Flow:  MANIFEST -> PARSE -> CHUNK -> EMBED -> WRITE (ChromaDB + BM25), transactional
+
+--------------------------------------------------------------------------------
+STEP 1. MANIFEST VALIDATION  (which documents are eligible)
+--------------------------------------------------------------------------------
+File:   app/retrieval/manifest.py  (ManifestValidator)
+What:   Reads data/manifest.json (settings.manifest_path), resolves paths under
+        data/ (settings.document_root), and yields only eligible files
+        (do_not_ingest sources are excluded).
+Tool:   JSON manifest + filesystem.
+
+--------------------------------------------------------------------------------
+STEP 2. PARSING  (Markdown -> frontmatter + body)
+--------------------------------------------------------------------------------
+File:   app/retrieval/parsing.py  (MarkdownParser)
+What:   Reads each .md file, splits YAML frontmatter from the body.
+        Produces ParsedDocument(source=filename, frontmatter={...}, body=str).
+        The frontmatter carries "lang" (used later as the partition key).
+Tool/library:  python-frontmatter
+
+--------------------------------------------------------------------------------
+STEP 3. CHUNKING  (two-stage, header-aware then size-aware)
+--------------------------------------------------------------------------------
+File:   app/retrieval/chunking.py  (Chunker)
+What:   Stage 1 - split on Markdown headers H1/H2/H3 (H2 = primary boundary,
+                  settings.primary_header_level = 2), headers kept in the text.
+        Stage 2 - any oversized section is split further by size.
+        Each chunk text = headings + parent heading context + body.
+        chunk_size = 300 chars, chunk_overlap = 0 (settings).
+        Deterministic chunk_id = sha256(source|heading_path|ordinal|norm_text).
+        Validates chunk metadata "lang" is in SUPPORTED, else fails loudly.
+Tool/library:  langchain_text_splitters
+               (MarkdownHeaderTextSplitter + RecursiveCharacterTextSplitter)
+               Separators: paragraph -> newline -> sentence -> word -> char.
+Output:  canonical list of Chunk(chunk_id, text, source, metadata) - ONE list
+         feeds BOTH indexes so dense and sparse stay in parity.
+
+--------------------------------------------------------------------------------
+STEP 4. EMBEDDING  (dense vectors for each chunk)
+--------------------------------------------------------------------------------
+File:   app/retrieval/embedding.py  (DenseEmbedder.embed_documents)
+Model:  OpenAI  text-embedding-3-small   (settings.openai_embedding_model)
+Dims:   1536                              (settings.openai_embedding_dims)
+What:   Batches of 100 texts -> OpenAI embeddings API. Each returned vector is
+        checked to be exactly 1536 dims or it raises.
+Provider:  OpenAI  (embedding_provider = "openai")
+
+--------------------------------------------------------------------------------
+STEP 5. WRITE INDEXES  (dense = ChromaDB, sparse = BM25) - transactional
+--------------------------------------------------------------------------------
+5a. DENSE INDEX -> ChromaDB
+    File:   app/retrieval/store.py  (ChromaStore)
+    What:   chromadb.PersistentClient at chroma_db/ (settings.chroma_dir),
+            collection "knowledge_base" (settings.chroma_collection).
+            Distance space = cosine (so similarity = 1 - distance).
+            upsert(ids, documents=texts, embeddings=vectors, metadatas).
+    Tool:   ChromaDB (local persistent).
+
+5b. SPARSE INDEX -> BM25  (one pickle file per language)
+    File:   app/retrieval/sparse.py  (Bm25Index / Bm25Registry)
+    What:   Tokenize chunk text (regex \w+, lowercased), build BM25Okapi.
+            Persisted per language to .bm25/knowledge_base.<lang>.pkl
+            (e.g. knowledge_base.en.pkl, .hi.pkl, .es.pkl) via atomic replace.
+    Tool/library:  rank_bm25 (BM25Okapi).
+
+5c. TRANSACTION + PRUNE + PARITY
+    - Chroma written first, then each per-language BM25 persisted.
+    - Stale Chroma IDs (no longer in manifest scope) are pruned.
+    - Any failure rolls BOTH indexes back to pre-run state.
+    - Post-commit parity check: per-language Chroma id set == BM25 id set.
+
+
+================================================================================
+PHASE B - ONLINE QUERY  (answer a traveler's question)
+================================================================================
+Entry: /api/ask resolves the governing language, then the LangGraph main graph
+routes an AIRPORT_QUESTION turn into the RAG sub-graph.
+
+RAG sub-graph:  app/agents/rag_subgraph.py
+    START -> retrieve -> evidence_evaluator -> END
+Then main graph:  rag (tier) -> answer -> validate -> finalize | fallback | error
+
+Full chain:
+  retrieve (hybrid) -> evidence grade -> [STRONG] answer (LLM) -> validate
+  -> finalize   OR   [MEDIUM/WEAK, or validation fails] -> fallback
+  (any node error -> error node)
+
+--------------------------------------------------------------------------------
+STEP 1. RETRIEVE NODE  (hybrid retrieval)   NO LLM
+--------------------------------------------------------------------------------
+Node:    make_retrieve_node (rag_subgraph.py) -> search_airport tool
+Tool:    app/agents/tools.py (search_airport, a LangChain @tool)
+Adapter: app/retrieval/search.py (AirportSearch)
+Engine:  app/retrieval/retrievers.py (HybridRetriever.retrieve_with_status)
+Scope:   language-scoped (req.language) end to end.
+
+Hybrid retrieval sub-stages (run inside HybridRetriever):
+
+  1a. DENSE retrieval        (DenseRetriever)
+      - Embed the query: OpenAI text-embedding-3-small, 1536 dims
+        (same DenseEmbedder as ingestion; embed_query).
+      - Query ChromaDB with where={"lang": <lang>}, cosine similarity.
+      - Returns top (chunk_id, similarity).  dense_top_k = 20.
+
+  1b. SPARSE retrieval       (SparseRetriever)
+      - BM25Okapi over the per-language pickle (Bm25Registry.get(lang)).
+      - Returns top (chunk_id, bm25_score), non-positive scores dropped.
+      - sparse_top_k = 20.
+
+      NOTE: 1a and 1b run CONCURRENTLY in a ThreadPoolExecutor(max_workers=2).
+            If ONE fails the pipeline continues with the survivor (degraded);
+            only if BOTH fail/empty does retrieval return nothing.
+
+  1c. FUSION  -  Reciprocal Rank Fusion (RrfFuser)
+      - Combines the dense and sparse ranked lists: score = sum 1/(rrf_k+rank+1).
+      - fusion_method = "rrf", rrf_k = 20, hybrid_top_k = 20.
+      - Output: fused (chunk_id, score), ties broken by chunk_id.
+
+  1d. RERANK  -  Cohere  (CohereReranker)
+      - Model:   Cohere  rerank-v3.5   (settings.reranker_model).
+      - Looks up fused chunk texts from Chroma, sends (query, documents) to Cohere.
+      - Max 50 candidates (reranker_max_candidates), 10s timeout.
+      - Returns the final top_k = settings.answer_passages = 5 passages
+        with Cohere relevance scores.
+      - NO local fallback by design. If Cohere fails, the FUSED order is kept
+        and rerank_applied=False is flagged to the evidence grader.
+
+  Output of retrieve: passages[{chunk_id, text, source, score}],
+                      rerank_applied (bool), retrieval_degraded (bool).
+
+--------------------------------------------------------------------------------
+STEP 2. EVIDENCE EVALUATION  (grade STRONG / MEDIUM / WEAK)   NO LLM
+--------------------------------------------------------------------------------
+Node:   make_evidence_evaluator_node (rag_subgraph.py)
+Logic:  app/workflow/evidence.py (EvidenceAssessor) - pure Python thresholds.
+Thresholds: config/evidence_thresholds.json (strong, medium).
+What:
+   - No passages                      -> WEAK
+   - rerank NOT applied OR degraded    -> capped at MEDIUM
+     (fused/single-source scores are not on the calibrated scale)
+   - else: top rerank score >= strong  -> STRONG
+           >= medium                   -> MEDIUM
+           below                       -> WEAK
+Routing (main graph):
+   STRONG      -> go to ANSWER node
+   MEDIUM/WEAK -> go to FALLBACK node (safe "can't confirm" reply)
+
+--------------------------------------------------------------------------------
+STEP 3. ANSWER GENERATION   LLM CALL (only on STRONG)
+--------------------------------------------------------------------------------
+Node:   app/agents/answer_agent.py (make_answer_node)
+LLM:    app/workflow/answer.py (OpenAIAnswerGenerator)
+Model:  OpenAI  gpt-4o   (settings.openai_chat_model)
+Config: temperature = 0, JSON mode (response_format json_object),
+        max_tokens = answer_max_tokens = 400, timeout 30s, 1 retry.
+What:
+   - The model sees ONLY the numbered retrieved passages + the question.
+   - NO tool binding: retrieval already happened; the model cannot fetch more.
+   - Must answer ONLY from the passages (no outside knowledge).
+   - Returns JSON {can_answer, answer, used_passages[]}.
+   - Answer is spoken by TTS: 1-3 short plain sentences, no markdown/markers.
+   - Answers in the language of the "Answer-language" field.
+   - "used_passages" indices are mapped back to the cited passages.
+
+--------------------------------------------------------------------------------
+STEP 4. VALIDATION  (grounding check)   NO LLM (currently)
+--------------------------------------------------------------------------------
+Node:   app/agents/validation_agent.py (make_validation_node)
+Logic:  app/workflow/validation.py (CitationOverlapValidator) - Python rules.
+What:
+   - Every number / code in the answer must appear verbatim in cited passages.
+   - Each sentence must be mostly words drawn from the cited passages.
+   NOTE: TypeSafe/Jev is the intended primary validator but is deferred;
+         a TYPESAFE_API_KEY is still required at startup (settings).
+Routing:
+   supported     -> FINALIZE
+   not supported -> FALLBACK
+
+--------------------------------------------------------------------------------
+STEP 5. TERMINAL NODES
+--------------------------------------------------------------------------------
+File:   answer_agent.py (finalize) + validation_agent.py (fallback, error)
+
+  FINALIZE  (answer approved)         NO LLM
+     status = ANSWERED, spoken = True, de-duplicated citations
+     (source, chunk_id), carries the evidence tier.
+
+  FALLBACK  (MEDIUM/WEAK or validation failed)   NO LLM
+     status = FALLBACK, spoken = True, approved "I can't confirm that" wording
+     from ResponseBook (config/responses.json). No citations.
+
+  ERROR     (any node raised)         NO LLM
+     status = ERROR, spoken = False (text only - a broken turn is never
+     voiced or turned into an avatar clip).
+
+
+================================================================================
+SUMMARY - TOOLS / MODELS / LIBRARIES PER STAGE
+================================================================================
+Parsing            : python-frontmatter (Markdown + YAML frontmatter)
+Chunking           : langchain_text_splitters (Markdown header + recursive char)
+Dense embedding    : OpenAI text-embedding-3-small, 1536 dims (ingest + query)
+Dense index/store  : ChromaDB PersistentClient, cosine, collection knowledge_base
+Sparse index       : rank_bm25 BM25Okapi, per-language pickles (.bm25/*.pkl)
+Hybrid fusion      : Reciprocal Rank Fusion (RRF), rrf_k = 20
+Reranking          : Cohere rerank-v3.5 (no local fallback), top 5
+Evidence grading   : Python thresholds (config/evidence_thresholds.json), no LLM
+Answer LLM         : OpenAI gpt-4o, temperature 0, JSON mode, 400 max tokens
+Validation         : Python citation-overlap rules (TypeSafe/Jev deferred)
+Orchestration      : LangGraph (sub-graph + main graph), LangChain @tool
+Intent classifier  : OpenAI gpt-4o-mini (supervisor, upstream of RAG)
+Observability       : LangSmith (optional, off by default)
+
+KEY RETRIEVAL WIDTHS (config/settings.py):
+   dense_top_k = 20, sparse_top_k = 20, rrf_k = 20, hybrid_top_k = 20,
+   reranker_max_candidates = 50, answer_passages (final) = 5
+================================================================================

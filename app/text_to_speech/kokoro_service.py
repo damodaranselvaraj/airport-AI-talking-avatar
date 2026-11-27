@@ -11,7 +11,12 @@ import logging
 import re
 import threading
 import wave
-from typing import Optional
+from typing import TYPE_CHECKING, Optional
+
+from app import i18n
+
+if TYPE_CHECKING:
+    from app.i18n import LangProfile
 
 logger = logging.getLogger(__name__)
 
@@ -48,38 +53,60 @@ def pcm16_to_wav(samples, sample_rate: int = SAMPLE_RATE) -> bytes:
 
 
 class KokoroSynthesizer:
-    def __init__(self, voice: str = "af_heart", lang_code: str = "a") -> None:
-        self._voice = voice
-        self._lang = lang_code
-        self._pipeline: Optional[object] = None
+    """Language-aware Kokoro TTS: one cached ``KPipeline`` per language.
+
+    Pipelines are keyed by Kokoro lang_code (``a``/``h``/``e``) and built lazily.
+    ``warm_up`` builds and exercises every supported language so the first real
+    turn in any of them is fast (the accepted ~3x startup cost).
+    """
+
+    def __init__(
+        self,
+        profiles: dict[str, "LangProfile"],
+        default_language: str = "en",
+    ) -> None:
+        self._profiles = dict(profiles)
+        self._default = default_language
+        self._pipelines: dict[str, object] = {}  # Kokoro lang_code -> KPipeline
         self._lock = threading.Lock()
 
     @property
     def ready(self) -> bool:
-        return self._pipeline is not None
+        """True once at least the default-language pipeline is built."""
+        return i18n.kokoro_lang_code_for(self._default) in self._pipelines
+
+    def _pipeline_for(self, language: str) -> object:
+        """Build (once) and return the cached ``KPipeline`` for ``language``.
+
+        Must be called under ``self._lock``.
+        """
+        lang_code = i18n.kokoro_lang_code_for(language)
+        pipeline = self._pipelines.get(lang_code)
+        if pipeline is None:
+            from kokoro import KPipeline
+
+            pipeline = KPipeline(
+                lang_code=lang_code, repo_id="hexgrad/Kokoro-82M", device="cpu"
+            )
+            self._pipelines[lang_code] = pipeline
+        return pipeline
 
     def warm_up(self) -> None:
-        """Load the model and run one tiny synthesis so the first real turn is fast."""
-        with self._lock:
-            if self._pipeline is None:
-                from kokoro import KPipeline
+        """Build the model and run one tiny synthesis for every supported language."""
+        for lang in i18n.SUPPORTED:
+            self.synthesize("Ready.", lang)
 
-                self._pipeline = KPipeline(lang_code=self._lang, device="cpu")
-        self.synthesize("Ready.")
-
-    def synthesize(self, text: str) -> bytes:
+    def synthesize(self, text: str, language: str = "en") -> bytes:
         import numpy as np
 
         spoken = speakable(text)
         if not spoken:
             raise ValueError("nothing to synthesize")
+        voice = i18n.kokoro_voice_for(language)
         with self._lock:
-            if self._pipeline is None:
-                from kokoro import KPipeline
-
-                self._pipeline = KPipeline(lang_code=self._lang, device="cpu")
+            pipeline = self._pipeline_for(language)
             chunks = []
-            for _gs, _ps, audio in self._pipeline(spoken, voice=self._voice):  # type: ignore[operator]
+            for _gs, _ps, audio in pipeline(spoken, voice=voice):  # type: ignore[operator]
                 if audio is not None:
                     chunks.append(np.asarray(audio, dtype=np.float32))
         if not chunks:
