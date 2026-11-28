@@ -11,6 +11,9 @@ support.
 > it cannot confirm it and points the traveler to the information or airline
 > desk — it never invents gates, times, fares, or visa rules.
 
+<img width="1030" height="650" alt="image" src="https://github.com/user-attachments/assets/72593cb3-ccf1-48ba-bdab-9b002e1fda55" />
+
+
 ## What a traveler can do
 
 | They do | What happens |
